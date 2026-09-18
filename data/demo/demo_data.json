@@ -1,0 +1,98 @@
+{
+  "document": {
+    "filename": "Apple_Annual_Report_2025.pdf",
+    "pages": [
+      {
+        "page_number": 1,
+        "text": "Apple Annual Report 2025. This document outlines the financial performance of Apple Inc. for the fiscal year 2025."
+      },
+      {
+        "page_number": 43,
+        "text": "Financial Summary: Net sales increased from the previous year. Revenue increased by 12% in fiscal year 2025, driven by strong demand. The company generated $391 billion in annual revenue."
+      },
+      {
+        "page_number": 45,
+        "text": "iPhone demand remained strong throughout the year. Operating margin improved slightly compared to the prior fiscal year."
+      }
+    ]
+  },
+  "llm_output_example": "Apple's revenue increased by 12% in fiscal year 2025. The company generated $391 billion in annual revenue. iPhone revenue increased significantly due to strong demand. Apple's operating margin improved during the year. Revenue will double next year.",
+  "demo_claims": [
+    {
+      "claim_text": "Apple's revenue increased by 12% in fiscal year 2025.",
+      "claim_type": "Financial Metric",
+      "source_sentence": "Apple's revenue increased by 12% in fiscal year 2025.",
+      "status": "Verified",
+      "confidence": 0.96,
+      "risk_level": "LOW",
+      "evidence": {
+        "text": "Revenue increased by 12% in fiscal year 2025, driven by strong demand.",
+        "page_number": 43,
+        "similarity_score": 0.94
+      },
+      "nli": {
+        "entailment": 0.96,
+        "contradiction": 0.02,
+        "neutral": 0.02,
+        "label": "SUPPORTED"
+      }
+    },
+    {
+      "claim_text": "The company generated $391 billion in annual revenue.",
+      "claim_type": "Financial Metric",
+      "source_sentence": "The company generated $391 billion in annual revenue.",
+      "status": "Verified",
+      "confidence": 0.95,
+      "risk_level": "LOW",
+      "evidence": {
+        "text": "The company generated $391 billion in annual revenue.",
+        "page_number": 43,
+        "similarity_score": 0.99
+      },
+      "nli": {
+        "entailment": 0.98,
+        "contradiction": 0.01,
+        "neutral": 0.01,
+        "label": "SUPPORTED"
+      }
+    },
+    {
+      "claim_text": "iPhone revenue increased significantly due to strong demand.",
+      "claim_type": "Business Event",
+      "source_sentence": "iPhone revenue increased significantly due to strong demand.",
+      "status": "Verified",
+      "confidence": 0.91,
+      "risk_level": "HIGH",
+      "evidence": {
+        "text": "iPhone demand remained strong throughout the year. Operating margin improved slightly...",
+        "page_number": 45,
+        "similarity_score": 0.85
+      },
+      "nli": {
+        "entailment": 0.15,
+        "contradiction": 0.82,
+        "neutral": 0.03,
+        "label": "CONTRADICTED"
+      }
+    },
+    {
+      "claim_text": "Revenue will double next year.",
+      "claim_type": "Future Projection",
+      "source_sentence": "Revenue will double next year.",
+      "status": "Unverified",
+      "confidence": 0.45,
+      "risk_level": "MEDIUM",
+      "evidence": {
+        "text": "No evidence.",
+        "page_number": 0,
+        "similarity_score": 0.12
+      },
+      "nli": {
+        "entailment": 0.05,
+        "contradiction": 0.05,
+        "neutral": 0.90,
+        "label": "UNVERIFIABLE"
+      }
+    }
+  ]
+}
