@@ -9,14 +9,16 @@ import EvidenceExplorer from "./pages/EvidenceExplorer"
 import History from "./pages/History"
 import Reports from "./pages/Reports"
 import Settings from "./pages/Settings"
-import About from "./pages/About"
 import SystemStatus from "./pages/SystemStatus"
+import Auth from "./pages/Auth"
 
 function App() {
   return (
     <Router>
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<Auth />} />
+        <Route path="/signup" element={<Auth />} />
         
         <Route element={<Layout />}>
           <Route path="/dashboard" element={<Dashboard />} />
@@ -27,7 +29,6 @@ function App() {
           <Route path="/history" element={<History />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/about" element={<About />} />
           <Route path="/system" element={<SystemStatus />} />
         </Route>
       </Routes>

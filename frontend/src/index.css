@@ -3,100 +3,96 @@
 
 @layer base {
   :root {
-    --background: 220 33% 98%;
-    --foreground: 222.2 84% 4.9%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
-    --destructive: 0 84.2% 60.2%;
+    --background: 220 10% 6%;
+    --foreground: 45 20% 95%;
+    --card: 220 10% 10%;
+    --card-foreground: 45 20% 95%;
+    --popover: 220 12% 8%;
+    --popover-foreground: 45 20% 95%;
+    --primary: 38 72% 56%;
+    --primary-foreground: 220 15% 10%;
+    --secondary: 220 8% 15%;
+    --secondary-foreground: 45 15% 92%;
+    --muted: 220 8% 14%;
+    --muted-foreground: 220 8% 64%;
+    --accent: 220 8% 16%;
+    --accent-foreground: 45 15% 92%;
+    --destructive: 350 70% 55%;
     --destructive-foreground: 210 40% 98%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-
-    --radius: 0.5rem;
+    --border: 220 10% 20%;
+    --input: 220 10% 17%;
+    --ring: 38 72% 56%;
+    --radius: 1rem;
+    --gold: 38 72% 56%;
   }
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+  html { color-scheme: dark; }
+  * { 
+    border-color: hsl(var(--border)); 
+    scrollbar-width: thin; 
+    scrollbar-color: rgba(255,255,255,0.15) transparent; 
   }
-}
-
-@layer base {
-  * {
-    border-color: hsl(var(--border));
-  }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 999px; }
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
   }
 }
 
+.app-shell-bg {
+  position: relative;
+  background-color: #08080a;
+  background-image:
+    radial-gradient(1100px circle at 8% -5%, rgba(191,149,63,0.10), transparent 55%),
+    radial-gradient(900px circle at 95% 10%, rgba(255,255,255,0.035), transparent 50%),
+    radial-gradient(1000px circle at 85% 105%, rgba(191,149,63,0.06), transparent 55%),
+    linear-gradient(180deg, #0a0a0b 0%, #08080a 100%);
+  background-attachment: fixed;
+}
+.app-shell-bg::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.5;
+  background-image: linear-gradient(to right, rgba(255,255,255,0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, black, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, black, transparent 70%);
+}
+
+.glass { background: rgba(255,255,255,0.045); backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%); border: 1px solid rgba(255,255,255,0.09); }
+.glass-strong { background: rgba(255,255,255,0.075); backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%); border: 1px solid rgba(255,255,255,0.14); }
+.glass-subtle { background: rgba(255,255,255,0.028); backdrop-filter: blur(14px) saturate(130%);
+  -webkit-backdrop-filter: blur(14px) saturate(130%); border: 1px solid rgba(255,255,255,0.07); }
+.glass-inset { background: rgba(0,0,0,0.22); backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.06); }
+.glass-shadow { box-shadow: 0 8px 32px -12px rgba(0,0,0,0.55), 0 1px 0 0 rgba(255,255,255,0.05) inset; }
+.luxury-divider { background: linear-gradient(to right, transparent, rgba(255,255,255,0.14), transparent); height: 1px; }
+.text-gold { color: hsl(var(--gold)); }
+
 /* Custom VERIFIN utility classes for risk colors */
 .bg-risk-supported {
-  @apply bg-emerald-500 text-white;
+  @apply bg-emerald-500/10 border border-emerald-400/30 text-emerald-300;
 }
 .text-risk-supported {
-  @apply text-emerald-500;
+  @apply text-emerald-300;
 }
 .bg-risk-contradicted {
-  @apply bg-rose-500 text-white;
+  @apply bg-rose-500/10 border border-rose-400/30 text-rose-300;
 }
 .text-risk-contradicted {
-  @apply text-rose-500;
+  @apply text-rose-300;
 }
 .bg-risk-unverifiable {
-  @apply bg-amber-500 text-white;
+  @apply bg-amber-500/10 border border-amber-400/30 text-amber-300;
 }
 .text-risk-unverifiable {
-  @apply text-amber-500;
+  @apply text-amber-300;
 }
 .bg-risk-info {
-  @apply bg-blue-500 text-white;
+  @apply bg-slate-500/10 border border-slate-400/20 text-slate-300;
 }
 .text-risk-info {
-  @apply text-blue-500;
+  @apply text-slate-300;
 }
