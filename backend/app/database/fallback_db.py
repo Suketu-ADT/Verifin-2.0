@@ -102,10 +102,40 @@ def _matches_filter(doc: Dict[str, Any], query: Optional[Dict[str, Any]]) -> boo
     return True
 
 
+import json
+from pathlib import Path
+
+STORE_FILE = Path("data") / "fallback_db_store.json"
+
+
+def _load_persisted_store() -> Dict[str, List[Dict[str, Any]]]:
+    if STORE_FILE.exists():
+        try:
+            with open(STORE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_persisted_store(store: Dict[str, List[Dict[str, Any]]]) -> None:
+    try:
+        STORE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(STORE_FILE, "w", encoding="utf-8") as f:
+            json.dump(store, f, indent=2, default=str)
+    except Exception:
+        pass
+
+
 class FallbackCollection:
-    def __init__(self, name: str):
+    def __init__(self, name: str, initial_docs: Optional[List[Dict[str, Any]]] = None, on_change: Optional[Any] = None):
         self.name = name
-        self._docs: List[Dict[str, Any]] = []
+        self._docs: List[Dict[str, Any]] = list(initial_docs or [])
+        self._on_change = on_change
+
+    def _notify(self) -> None:
+        if self._on_change:
+            self._on_change(self.name, self._docs)
 
     async def create_index(self, *args: Any, **kwargs: Any) -> str:
         return f"{self.name}_idx"
@@ -115,6 +145,7 @@ class FallbackCollection:
         if "_id" not in doc:
             doc["_id"] = str(uuid.uuid4())
         self._docs.append(doc)
+        self._notify()
         return InsertOneResult(doc["_id"])
 
     async def insert_many(self, documents: List[Dict[str, Any]]) -> InsertManyResult:
@@ -125,6 +156,7 @@ class FallbackCollection:
                 doc["_id"] = str(uuid.uuid4())
             self._docs.append(doc)
             ids.append(doc["_id"])
+        self._notify()
         return InsertManyResult(ids)
 
     async def find_one(
@@ -151,18 +183,23 @@ class FallbackCollection:
                     d.update(update)
                 count += 1
                 break
+        if count > 0:
+            self._notify()
         return UpdateResult(count)
 
     async def delete_one(self, query: Dict[str, Any]) -> DeleteResult:
         for idx, d in enumerate(self._docs):
             if _matches_filter(d, query):
                 self._docs.pop(idx)
+                self._notify()
                 return DeleteResult(1)
         return DeleteResult(0)
 
     async def delete_many(self, query: Dict[str, Any]) -> DeleteResult:
         initial = len(self._docs)
         self._docs = [d for d in self._docs if not _matches_filter(d, query)]
+        if len(self._docs) != initial:
+            self._notify()
         return DeleteResult(initial - len(self._docs))
 
     async def count_documents(self, query: Optional[Dict[str, Any]] = None) -> int:
@@ -171,11 +208,17 @@ class FallbackCollection:
 
 class FallbackDatabase:
     def __init__(self):
+        self._store: Dict[str, List[Dict[str, Any]]] = _load_persisted_store()
         self._collections: Dict[str, FallbackCollection] = {}
+
+    def _sync(self, collection_name: str, docs: List[Dict[str, Any]]) -> None:
+        self._store[collection_name] = docs
+        _save_persisted_store(self._store)
 
     def __getattr__(self, name: str) -> FallbackCollection:
         if name not in self._collections:
-            self._collections[name] = FallbackCollection(name)
+            initial = self._store.get(name, [])
+            self._collections[name] = FallbackCollection(name, initial_docs=initial, on_change=self._sync)
         return self._collections[name]
 
     def __getitem__(self, name: str) -> FallbackCollection:

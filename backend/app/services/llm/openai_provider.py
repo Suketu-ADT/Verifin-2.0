@@ -76,19 +76,89 @@ class OpenAIProvider(LLMProvider):
             messages.append({"role": "system", "content": system_instruction})
         messages.append({"role": "user", "content": prompt})
 
+
+        # Check if running against local/custom base URL (such as Ollama)
+        is_custom_base_url = bool(settings.openai_base_url)
+
         try:
-            completion = await self._client.beta.chat.completions.parse(
-                model=self._model_name,
-                messages=messages,
-                response_format=response_model,
-                temperature=settings.llm_temperature,
-                max_tokens=settings.llm_max_output_tokens,
+            # Only use OpenAI beta.chat.completions.parse for genuine OpenAI endpoints
+            if not is_custom_base_url:
+                try:
+                    completion = await self._client.beta.chat.completions.parse(
+                        model=self._model_name,
+                        messages=messages,
+                        response_format=response_model,
+                        temperature=settings.llm_temperature,
+                        max_tokens=settings.llm_max_output_tokens,
+                    )
+
+                    parsed = completion.choices[0].message.parsed
+                    if parsed is not None:
+                        return parsed
+                except Exception as parse_err:
+                    logger.info(f"OpenAI beta parse error ({parse_err}), falling back to standard JSON completion...")
+
+            # Direct fast JSON completion for Ollama / Groq / custom endpoints
+            import json
+            import re
+
+            example_json = {
+                "claims": [
+                    {
+                        "claim_text": "Company revenue grew 15% to $88.27 billion in Q3 2024",
+                        "claim_type": "numerical",
+                        "entity": "Company Name",
+                        "metric": "Revenue",
+                        "value": 88.27,
+                        "unit": "billion",
+                        "currency": "USD",
+                        "reporting_period": "Q3 2024",
+                    }
+                ]
+            }
+
+            sys_prompt = (
+                (system_instruction or "You are a financial information extraction specialist.")
+                + "\n\nCRITICAL: You MUST output strictly valid JSON matching this exact structure:\n"
+                + json.dumps(example_json, indent=2)
+                + "\nReturn ONLY the JSON object without commentary or markdown code blocks."
             )
 
-            parsed = completion.choices[0].message.parsed
-            if parsed is None:
-                raise ValueError("OpenAI returned null parsed output.")
-            return parsed
+            standard_messages = [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": prompt},
+            ]
+
+            raw_comp = await self._client.chat.completions.create(
+                model=self._model_name,
+                messages=standard_messages,
+                response_format={"type": "json_object"},
+                temperature=settings.llm_temperature,
+                max_tokens=min(settings.llm_max_output_tokens, 1500),
+            )
+
+            raw_text = raw_comp.choices[0].message.content or ""
+            if "```" in raw_text:
+                m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw_text)
+                if m:
+                    raw_text = m.group(1).strip()
+
+            try:
+                return response_model.model_validate_json(raw_text)
+            except Exception:
+                # Handle flexible root keys from compact local models
+                data = json.loads(raw_text)
+                if isinstance(data, list):
+                    data = {"claims": data}
+                elif isinstance(data, dict):
+                    if "claims" not in data:
+                        for cand in ["extracted_claims", "facts", "extracted_facts", "data", "results", "key_claims"]:
+                            if cand in data and isinstance(data[cand], list):
+                                data["claims"] = data[cand]
+                                break
+                    if "claims" not in data:
+                        data["claims"] = []
+                return response_model.model_validate(data)
 
         except ValidationError as val_err:
             logger.error(f"OpenAI response failed Pydantic validation: {val_err}")

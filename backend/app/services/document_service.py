@@ -276,8 +276,8 @@ class DocumentService:
         doc_text = ""
 
         if chunks:
-            # Join up to 15 chunks (approx 7,500 - 15,000 characters)
-            doc_text = "\n\n".join(c.text for c in chunks[:15] if c.text and c.text.strip())
+            # Join top chunks (approx 2,500 - 4,000 characters) for fast, accurate extraction
+            doc_text = "\n\n".join(c.text for c in chunks[:5] if c.text and c.text.strip())
 
         # If chunks empty or missing text, attempt raw text reading from disk
         if not doc_text.strip() and Path(doc.file_path).exists():
