@@ -10,7 +10,7 @@ import {
   FileSearch, Search, Cpu, Scale, Sparkles, Loader2, AlertCircle,
 } from "lucide-react"
 import { demoSessions } from "../lib/demoData"
-import { uploadDocument, startVerification, formatBytes, type DocumentResponse } from "../lib/api"
+import { uploadDocument, startVerification, extractFactsFromDocument, formatBytes, type DocumentResponse } from "../lib/api"
 
 const stages = [
   { icon: FileText, label: "Claim Decomposition" },
@@ -33,11 +33,36 @@ export default function VerificationFlow() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  // LLM Fact extraction state
+  const [isExtracting, setIsExtracting] = useState(false)
+  const [extractError, setExtractError] = useState<string | null>(null)
+  const [extractedCount, setExtractedCount] = useState<number | null>(null)
+
+  const handleExtractFacts = async (docId?: string) => {
+    const targetId = docId || uploadedDoc?.id
+    if (!targetId) return
+    setIsExtracting(true)
+    setExtractError(null)
+    setSubmitError(null)
+    try {
+      const res = await extractFactsFromDocument(targetId)
+      setAnswer(res.summary_text)
+      setExtractedCount(res.total_facts)
+      setIsExtracting(false)
+    } catch (err: any) {
+      setIsExtracting(false)
+      const detail = err?.response?.data?.detail || err?.message || "Failed to extract facts with LLM."
+      setExtractError(typeof detail === "string" ? detail : JSON.stringify(detail))
+    }
+  }
+
   const handleFileSelect = async (file: File | undefined) => {
     if (!file) return
     setSelectedSample(null)
     setUploadError(null)
     setSubmitError(null)
+    setExtractError(null)
+    setExtractedCount(null)
 
     // Client-side pre-validation
     if (!file.name.toLowerCase().endsWith(".pdf")) {
@@ -63,6 +88,8 @@ export default function VerificationFlow() {
       })
       setUploadedDoc(doc)
       setIsUploading(false)
+      // Automatically extract key facts using LLM right after upload
+      handleExtractFacts(doc.id)
     } catch (err: any) {
       setIsUploading(false)
       const detail = err?.response?.data?.detail || err?.message || "Failed to upload document."
@@ -231,21 +258,83 @@ export default function VerificationFlow() {
         {/* Right: LLM answer */}
         <motion.div variants={{ hidden: { opacity: 0, x: 20 }, show: { opacity: 1, x: 0 } }}>
         <Card className="border-white/10 h-full">
-          <div className="p-5 border-b border-white/10 flex items-center gap-3 bg-white/[0.02] rounded-t-2xl">
-            <FileSearch className="h-5 w-5 text-slate-700" />
-            <h2 className="text-base font-bold text-white">Step 2 · LLM-Generated Answer</h2>
+          <div className="p-5 border-b border-white/10 flex items-center justify-between bg-white/[0.02] rounded-t-2xl">
+            <div className="flex items-center gap-3">
+              <Sparkles className="h-5 w-5 text-amber-400" />
+              <div>
+                <h2 className="text-base font-bold text-white">Step 2 · LLM Facts & Statements</h2>
+                <div className="text-[11px] text-slate-400">Extract propositions to test for hallucinations</div>
+              </div>
+            </div>
+            {uploadedDoc && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExtractFacts()}
+                disabled={isExtracting || isUploading}
+                className="text-xs border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 shrink-0"
+              >
+                {isExtracting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Extracting...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5 text-amber-400" /> {answer ? "Re-Extract with LLM" : "Extract Facts with LLM"}
+                  </>
+                )}
+              </Button>
+            )}
           </div>
           <CardContent className="p-6 space-y-4">
+            {isExtracting && (
+              <div className="border border-amber-500/30 rounded-xl bg-amber-500/10 p-4 flex items-center gap-3 text-xs text-amber-300 animate-pulse">
+                <Loader2 className="h-5 w-5 animate-spin text-amber-400 shrink-0" />
+                <div>
+                  <div className="font-semibold text-amber-200">LLM is reading document and extracting facts...</div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">Synthesizing revenue, income, margins, and key financial propositions</div>
+                </div>
+              </div>
+            )}
+
+            {extractError && (
+              <div className="border border-rose-500/30 rounded-xl bg-rose-500/10 p-3 flex items-center justify-between text-xs text-rose-300">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+                  <span>{extractError}</span>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => handleExtractFacts()} className="text-xs text-rose-300 hover:bg-rose-500/20">
+                  Retry
+                </Button>
+              </div>
+            )}
+
+            {extractedCount !== null && !isExtracting && (
+              <div className="flex items-center justify-between text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3.5 py-2">
+                <span className="flex items-center gap-1.5 font-medium">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> Extracted {extractedCount} statements from document
+                </span>
+                <span className="text-[10px] text-slate-400">Review or customize statements below</span>
+              </div>
+            )}
+
             <Textarea
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
-              placeholder="Paste the LLM's generated summary or answer here — e.g. &quot;Revenue increased 12% this year, driven by strong iPhone demand...&quot;"
-              className="min-h-[160px] text-sm font-serif bg-transparent border-white/10 focus-visible:ring-amber-500"
+              placeholder="Your LLM will generate financial statements here, or you can paste claims directly..."
+              className="min-h-[170px] text-sm font-sans leading-relaxed bg-transparent border-white/10 focus-visible:ring-amber-500"
             />
-            <div className="text-[11px] text-slate-400">{answer.length} characters</div>
+            <div className="flex items-center justify-between text-[11px] text-slate-400">
+              <span>{answer.length} characters</span>
+              {uploadedDoc && !answer && !isExtracting && (
+                <span className="text-amber-400 cursor-pointer hover:underline" onClick={() => handleExtractFacts()}>
+                  ✨ Click here to auto-generate facts from document
+                </span>
+              )}
+            </div>
 
             <div className="glass-subtle border border-white/10 rounded-lg p-4">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">What happens next</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Verification Pipeline Stages</div>
               <div className="grid grid-cols-2 gap-3">
                 {stages.map((s) => (
                   <div key={s.label} className="flex items-center gap-2 text-xs font-medium text-slate-300">
@@ -271,15 +360,15 @@ export default function VerificationFlow() {
         <Button
           disabled={!canSubmit}
           onClick={handleSubmit}
-          className="h-11 px-6"
+          className="h-11 px-7 font-semibold"
         >
           {isSubmitting ? (
             <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Queuing Verification...
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Verifying Credibility...
             </>
           ) : (
             <>
-              Run Verification <ArrowRight className="h-4 w-4 ml-1" />
+              Check Credibility & Grounding <ArrowRight className="h-4 w-4 ml-1.5" />
             </>
           )}
         </Button>

@@ -3,7 +3,7 @@ Document upload and management endpoints.
 """
 
 from fastapi import APIRouter, Depends, File, UploadFile
-from app.schemas.document import DocumentResponse
+from app.schemas.document import DocumentResponse, DocumentExtractFactsResponse
 from app.services.document_service import DocumentService
 
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
@@ -50,3 +50,14 @@ async def get_document_tables(
 ):
     """Returns all structured financial tables extracted from the document."""
     return await service.get_document_tables(document_id)
+
+
+@router.post("/{document_id}/extract-facts", response_model=DocumentExtractFactsResponse)
+async def extract_document_facts(
+    document_id: str,
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentExtractFactsResponse:
+    """
+    Extracts key financial facts and statements from the uploaded document using the configured LLM.
+    """
+    return await service.extract_facts_from_document(document_id)

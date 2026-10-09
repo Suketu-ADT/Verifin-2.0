@@ -251,3 +251,104 @@ class DocumentService:
     async def get_document_chunks(self, document_id: str):
         """Retrieves all extracted text chunks and OCR metadata for document."""
         return await self.chunk_repository.get_chunks_by_document(document_id)
+
+    async def extract_facts_from_document(
+        self, document_id: str
+    ) -> DocumentExtractFactsResponse:
+        """
+        Extracts key financial facts and statements from an uploaded document using LLM
+        with fallback to deterministic claim analysis.
+        """
+        from app.schemas.document import DocumentExtractFactsResponse, ExtractedFactItem
+        from app.services.llm.financial_extractor import FinancialExtractorService
+        from app.services.llm.factory import get_llm_provider
+        from app.services.claim_extractor import ClaimExtractor
+
+        doc = await self.repository.get_document_by_id(document_id)
+        if not doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document with ID '{document_id}' not found.",
+            )
+
+        # 1. Fetch chunks from repository
+        chunks = await self.chunk_repository.get_chunks_by_document(document_id)
+        doc_text = ""
+
+        if chunks:
+            # Join up to 15 chunks (approx 7,500 - 15,000 characters)
+            doc_text = "\n\n".join(c.text for c in chunks[:15] if c.text and c.text.strip())
+
+        # If chunks empty or missing text, attempt raw text reading from disk
+        if not doc_text.strip() and Path(doc.file_path).exists():
+            try:
+                import fitz
+                pdf_doc = fitz.open(doc.file_path)
+                texts = []
+                for p_idx in range(min(5, len(pdf_doc))):
+                    texts.append(pdf_doc[p_idx].get_text() or "")
+                doc_text = "\n\n".join(texts)
+            except Exception as exc:
+                logger.warning(f"Could not extract raw text fallback from {doc.file_path}: {exc}")
+
+        if not doc_text.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unable to extract text from the document. The document may be empty or unreadable.",
+            )
+
+        # 2. Extract facts using FinancialExtractorService (which uses HuggingFace LLM)
+        llm = get_llm_provider()
+        extractor = FinancialExtractorService(llm_provider=llm)
+        provider_name = llm.name if (llm and llm.is_configured) else "deterministic-fallback"
+
+        try:
+            llm_claims = await extractor.extract_claims(
+                text=doc_text,
+                document_id=document_id,
+                source_chunks=chunks,
+            )
+        except Exception as exc:
+            logger.warning(f"Error during LLM claim extraction: {exc}")
+            llm_claims = []
+
+        # 3. If LLM returned no claims, use deterministic extraction
+        if not llm_claims:
+            fallback = ClaimExtractor()
+            raw_claims = fallback.extract_claims(doc_text)
+            from app.schemas.llm import LLMExtractedClaim
+            for rc in raw_claims[:8]:
+                llm_claims.append(
+                    LLMExtractedClaim(
+                        claim_text=rc["claim_text"],
+                        claim_type=rc["claim_type"],
+                    )
+                )
+
+        # 4. Convert to response model and build clean formatted summary text
+        fact_items: list[ExtractedFactItem] = []
+        summary_lines: list[str] = []
+
+        for idx, c in enumerate(llm_claims[:10], start=1):
+            fact_items.append(
+                ExtractedFactItem(
+                    claim_text=c.claim_text,
+                    claim_type=c.claim_type,
+                    entity=c.entity,
+                    metric=c.metric,
+                    value=c.value,
+                    unit=c.unit,
+                    reporting_period=c.reporting_period,
+                )
+            )
+            summary_lines.append(f"{idx}. {c.claim_text}")
+
+        summary_text = "\n".join(summary_lines)
+
+        return DocumentExtractFactsResponse(
+            document_id=document_id,
+            summary_text=summary_text,
+            facts=fact_items,
+            total_facts=len(fact_items),
+            provider_used=provider_name,
+        )

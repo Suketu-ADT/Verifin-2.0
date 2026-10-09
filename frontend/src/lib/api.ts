@@ -386,3 +386,33 @@ export async function getLlmHealth(): Promise<any> {
   const response = await api.get('/api/system/llm/health');
   return response.data;
 }
+
+export interface ExtractedFactItem {
+  claim_text: string;
+  claim_type: string;
+  entity?: string | null;
+  metric?: string | null;
+  value?: number | null;
+  unit?: string | null;
+  reporting_period?: string | null;
+}
+
+export interface DocumentExtractFactsResponse {
+  document_id: string;
+  summary_text: string;
+  facts: ExtractedFactItem[];
+  total_facts: number;
+  provider_used: string;
+}
+
+/**
+ * Extracts facts and financial statements from an uploaded document using LLM.
+ */
+export async function extractFactsFromDocument(
+  documentId: string
+): Promise<DocumentExtractFactsResponse> {
+  const response = await api.post<DocumentExtractFactsResponse>(
+    `/api/documents/${documentId}/extract-facts`
+  );
+  return response.data;
+}
