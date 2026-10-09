@@ -13,6 +13,12 @@ export interface Evidence {
   text: string
   page_number: number
   similarity_score: number
+  bounding_box?: any
+  is_ocr?: boolean
+  extraction_method?: string
+  ocr_confidence?: number | null
+  needs_review?: boolean
+  words?: any[] | null
 }
 
 export interface NLI {
@@ -32,6 +38,8 @@ export interface DemoClaim {
   source_sentence: string
   evidence: Evidence | null
   nli: NLI | null
+  numerical_finding?: any
+  temporal_anchor?: any
 }
 
 export interface DemoSession {

@@ -64,7 +64,7 @@ export default function LandingPage() {
               </Button>
             </motion.div>
             
-            <motion.div variants={{ hidden: { opacity: 0, opacity: 0 }, show: { opacity: 1 } }} className="flex items-center text-xs text-slate-500 font-medium">
+            <motion.div variants={{ hidden: { opacity: 0 }, show: { opacity: 1 } }} className="flex items-center text-xs text-slate-500 font-medium">
               <Database className="h-3.5 w-3.5 mr-2 text-slate-400" />
               Ships with a demo dataset based on an Apple FY2025 annual report excerpt for testing.
             </motion.div>

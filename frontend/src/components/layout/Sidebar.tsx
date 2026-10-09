@@ -2,7 +2,7 @@ import { motion } from "framer-motion"
 import { Link, useLocation } from "react-router-dom"
 import { 
   FileSearch, History, Search, Activity, Settings, FileText,
-  LayoutDashboard, X,
+  LayoutDashboard, X, ShieldCheck,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -16,9 +16,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "New Verification", href: "/verify", icon: FileSearch },
+    { name: "Review Queue", href: "/review", icon: ShieldCheck },
+    { name: "Evidence Explorer", href: "/evidence", icon: Search },
     { name: "History", href: "/history", icon: History },
     { name: "Reports", href: "/reports", icon: FileText },
-    { name: "Evidence Explorer", href: "/evidence", icon: Search },
     { name: "System Status", href: "/system", icon: Activity },
     { name: "Settings", href: "/settings", icon: Settings },
   ]

@@ -7,9 +7,10 @@ import { Badge } from "../components/ui/badge"
 import { Textarea } from "../components/ui/textarea"
 import {
   FileUp, ShieldCheck, FileText, CheckCircle2, ArrowRight,
-  FileSearch, Search, Cpu, Scale, Sparkles,
+  FileSearch, Search, Cpu, Scale, Sparkles, Loader2, AlertCircle,
 } from "lucide-react"
 import { demoSessions } from "../lib/demoData"
+import { uploadDocument, startVerification, formatBytes, type DocumentResponse } from "../lib/api"
 
 const stages = [
   { icon: FileText, label: "Claim Decomposition" },
@@ -23,23 +24,100 @@ export default function VerificationFlow() {
   const [fileName, setFileName] = useState<string | null>(null)
   const [answer, setAnswer] = useState("")
   const [selectedSample, setSelectedSample] = useState<string | null>(null)
+  
+  // Real backend upload & verification state
+  const [uploadedDoc, setUploadedDoc] = useState<DocumentResponse | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
+  const handleFileSelect = async (file: File | undefined) => {
+    if (!file) return
+    setSelectedSample(null)
+    setUploadError(null)
+    setSubmitError(null)
+
+    // Client-side pre-validation
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      setUploadError("Only PDF documents are supported.")
+      return
+    }
+    if (file.size === 0) {
+      setUploadError("The selected PDF file is empty (0 bytes).")
+      return
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setUploadError("File exceeds the 25 MB size limit.")
+      return
+    }
+
+    setFileName(file.name)
+    setIsUploading(true)
+    setUploadProgress(0)
+
+    try {
+      const doc = await uploadDocument(file, (percent) => {
+        setUploadProgress(percent)
+      })
+      setUploadedDoc(doc)
+      setIsUploading(false)
+    } catch (err: any) {
+      setIsUploading(false)
+      const detail = err?.response?.data?.detail || err?.message || "Failed to upload document."
+      setUploadError(typeof detail === "string" ? detail : JSON.stringify(detail))
+      setUploadedDoc(null)
+    }
+  }
 
   const loadSample = (sessionId: string) => {
     const session = demoSessions.find((s) => s.id === sessionId)
     if (!session) return
+    setUploadedDoc(null)
+    setUploadError(null)
+    setSubmitError(null)
     setFileName(session.document)
     setAnswer(session.llm_output)
     setSelectedSample(sessionId)
   }
 
-  const handleSubmit = () => {
-    // Demo mode: route to the matching pre-computed demo session's results.
-    // A real submission would POST to /api/documents/upload then /api/verification/start.
-    const target = selectedSample ?? demoSessions[0].id
-    navigate(`/verify/results/${target}`)
+  const handleRemove = () => {
+    setFileName(null)
+    setUploadedDoc(null)
+    setSelectedSample(null)
+    setUploadError(null)
+    setSubmitError(null)
+    setUploadProgress(0)
   }
 
-  const canSubmit = Boolean(fileName) && answer.trim().length > 0
+  const handleSubmit = async () => {
+    setSubmitError(null)
+    
+    // Demo mode: route directly to canned demo results
+    if (selectedSample) {
+      navigate(`/verify/results/${selectedSample}`)
+      return
+    }
+
+    if (!uploadedDoc) {
+      setSubmitError("Please upload a document or choose a sample.")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const session = await startVerification(uploadedDoc.id, answer)
+      setIsSubmitting(false)
+      navigate(`/verify/results/${session.id}`)
+    } catch (err: any) {
+      setIsSubmitting(false)
+      const detail = err?.response?.data?.detail || err?.message || "Failed to start verification session."
+      setSubmitError(typeof detail === "string" ? detail : JSON.stringify(detail))
+    }
+  }
+
+  const canSubmit = (Boolean(uploadedDoc) || Boolean(selectedSample)) && answer.trim().length > 0 && !isUploading && !isSubmitting
 
   return (
     <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.1 } } }} className="max-w-5xl mx-auto space-y-6">
@@ -63,18 +141,40 @@ export default function VerificationFlow() {
             <h2 className="text-base font-bold text-white">Step 1 · Source Document</h2>
           </div>
           <CardContent className="p-6 space-y-4">
-            {!fileName ? (
+            {isUploading ? (
+              <div className="border border-white/10 rounded-xl glass-subtle p-8 flex flex-col items-center justify-center text-center space-y-3">
+                <Loader2 className="h-6 w-6 text-amber-400 animate-spin" />
+                <div className="text-sm font-semibold text-white">Uploading & verifying {fileName}...</div>
+                <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden max-w-xs">
+                  <div className="bg-amber-400 h-full transition-all duration-200" style={{ width: `${uploadProgress}%` }} />
+                </div>
+                <div className="text-xs text-slate-400">{uploadProgress}% complete</div>
+              </div>
+            ) : uploadError ? (
+              <div className="border border-rose-500/30 rounded-xl bg-rose-500/5 p-5 space-y-3">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-rose-400 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-sm font-semibold text-rose-300">Upload Failed</div>
+                    <div className="text-xs text-rose-300/80 mt-1">{uploadError}</div>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleRemove} className="text-xs">
+                  Try Again
+                </Button>
+              </div>
+            ) : !fileName ? (
               <label className="border-2 border-dashed border-white/15 rounded-xl glass-subtle p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-white/[0.05] transition-colors">
                 <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-3">
                   <ShieldCheck className="h-5 w-5 text-slate-400" />
                 </div>
                 <p className="text-sm font-semibold text-slate-300 mb-1">Drop a financial document, or browse files</p>
-                <p className="text-[11px] text-slate-400">PDF · 10-K, 10-Q, earnings transcripts</p>
+                <p className="text-[11px] text-slate-400">PDF · 10-K, 10-Q, earnings transcripts (max 25 MB)</p>
                 <input
                   type="file"
                   accept="application/pdf"
                   className="hidden"
-                  onChange={(e) => e.target.files?.[0] && setFileName(e.target.files[0].name)}
+                  onChange={(e) => handleFileSelect(e.target.files?.[0])}
                 />
               </label>
             ) : (
@@ -85,10 +185,23 @@ export default function VerificationFlow() {
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-white truncate">{fileName}</div>
-                    <div className="text-[11px] text-emerald-400 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Ready</div>
+                    {uploadedDoc ? (
+                      <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 flex-wrap">
+                        <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Ready ({uploadedDoc.status})</span>
+                        <span className="text-slate-500">·</span>
+                        <span className="text-slate-400">{formatBytes(uploadedDoc.size)}</span>
+                        <span className="text-slate-500">·</span>
+                        <span className="text-slate-400">{uploadedDoc.page_count} page{uploadedDoc.page_count !== 1 ? 's' : ''}</span>
+                        <span className="font-mono text-[9px] bg-white/5 text-slate-300 px-1.5 py-0.5 rounded">ID: {uploadedDoc.id.slice(0, 8)}...</span>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-amber-400 flex items-center gap-1">
+                        <Sparkles className="h-3 w-3" /> Sample Dataset
+                      </div>
+                    )}
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => { setFileName(null); setSelectedSample(null) }}>Remove</Button>
+                <Button variant="ghost" size="sm" onClick={handleRemove}>Remove</Button>
               </div>
             )}
 
@@ -147,13 +260,28 @@ export default function VerificationFlow() {
         </motion.div>
       </div>
 
+      {submitError && (
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="p-4 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 text-xs flex items-start gap-2.5">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-400" />
+          <span>{submitError}</span>
+        </motion.div>
+      )}
+
       <motion.div variants={{ hidden: { opacity: 0, y: 15 }, show: { opacity: 1, y: 0 } }} className="flex justify-end">
         <Button
           disabled={!canSubmit}
           onClick={handleSubmit}
           className="h-11 px-6"
         >
-          Run Verification <ArrowRight className="h-4 w-4" />
+          {isSubmitting ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Queuing Verification...
+            </>
+          ) : (
+            <>
+              Run Verification <ArrowRight className="h-4 w-4 ml-1" />
+            </>
+          )}
         </Button>
       </motion.div>
     </motion.div>

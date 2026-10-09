@@ -10,6 +10,7 @@ import History from "./pages/History"
 import Reports from "./pages/Reports"
 import Settings from "./pages/Settings"
 import SystemStatus from "./pages/SystemStatus"
+import ReviewQueue from "./pages/ReviewQueue"
 import Auth from "./pages/Auth"
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
           <Route path="/verify/results/:id" element={<ResultsDashboard />} />
           <Route path="/verify/results/:id/claim/:claimId" element={<ClaimDetail />} />
           <Route path="/evidence" element={<EvidenceExplorer />} />
+          <Route path="/review" element={<ReviewQueue />} />
           <Route path="/history" element={<History />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
