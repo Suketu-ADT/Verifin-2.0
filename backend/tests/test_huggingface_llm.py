@@ -49,23 +49,24 @@ def test_provider_factory_selection_huggingface():
 
 def test_huggingface_unconfigured_behavior():
     """Verify unconfigured provider reports safe status and fails fast without token."""
-    provider = HuggingFaceProvider(token=None)
-    assert provider.is_configured is False
+    with patch.object(settings, "hf_token", None):
+        provider = HuggingFaceProvider(token=None)
+        assert provider.is_configured is False
 
-    # Health check returns safe unconfigured payload
-    health = asyncio.run(provider.health_check())
-    assert health["status"] == "unconfigured"
-    assert "token" not in health
-    assert health["provider"] == "huggingface"
+        # Health check returns safe unconfigured payload
+        health = asyncio.run(provider.health_check())
+        assert health["status"] == "unconfigured"
+        assert "token" not in health
+        assert health["provider"] == "huggingface"
 
-    # Inference without token raises LLMAuthenticationError
-    with pytest.raises(LLMAuthenticationError) as exc_info:
-        asyncio.run(
-            provider.generate_structured(
-                prompt="Extract claims", response_model=LLMClaimExtractionResponse
+        # Inference without token raises LLMAuthenticationError
+        with pytest.raises(LLMAuthenticationError) as exc_info:
+            asyncio.run(
+                provider.generate_structured(
+                    prompt="Extract claims", response_model=LLMClaimExtractionResponse
+                )
             )
-        )
-    assert "HF_TOKEN" in str(exc_info.value)
+        assert "HF_TOKEN" in str(exc_info.value)
 
 
 # ------------------------------------------------------------------------------
@@ -526,31 +527,36 @@ async def test_authoritative_verdict_cannot_be_overwritten_by_llm():
 @pytest.mark.asyncio
 async def test_system_health_and_llm_endpoints_hf():
     """Verify /api/system/health, /api/system/llm/health, and /api/system/llm/readiness."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        # 1. GET /api/system/health
-        h_resp = await client.get("/api/system/health")
-        assert h_resp.status_code == 200
-        data = h_resp.json()
-        assert "services" in data
-        assert "llm" in data["services"]
+    mock_probe = {"status": "operational", "provider": "huggingface", "live_probe": "passed"}
+    with patch(
+        "app.services.llm.huggingface_provider.HuggingFaceProvider.test_readiness",
+        AsyncMock(return_value=mock_probe),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            # 1. GET /api/system/health
+            h_resp = await client.get("/api/system/health")
+            assert h_resp.status_code == 200
+            data = h_resp.json()
+            assert "services" in data
+            assert "llm" in data["services"]
 
-        # 2. GET /api/system/llm/health
-        llm_h = await client.get("/api/system/llm/health")
-        assert llm_h.status_code == 200
-        llm_data = llm_h.json()
-        assert "provider" in llm_data
-        assert "status" in llm_data
-        # Ensure secret tokens are never exposed
-        assert "hf_token" not in llm_data
-        assert "token" not in llm_data or llm_data.get("token") is True
+            # 2. GET /api/system/llm/health
+            llm_h = await client.get("/api/system/llm/health")
+            assert llm_h.status_code == 200
+            llm_data = llm_h.json()
+            assert "provider" in llm_data
+            assert "status" in llm_data
+            # Ensure secret tokens are never exposed
+            assert "hf_token" not in llm_data
+            assert "token" not in llm_data or llm_data.get("token") is True
 
-        # 3. POST /api/system/llm/readiness
-        readiness_resp = await client.post("/api/system/llm/readiness")
-        assert readiness_resp.status_code == 200
-        r_data = readiness_resp.json()
-        assert "status" in r_data
+            # 3. POST /api/system/llm/readiness
+            readiness_resp = await client.post("/api/system/llm/readiness")
+            assert readiness_resp.status_code == 200
+            r_data = readiness_resp.json()
+            assert "status" in r_data
 
 
 # ------------------------------------------------------------------------------
