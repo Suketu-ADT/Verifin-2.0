@@ -35,7 +35,13 @@ class OpenAIProvider(LLMProvider):
         self._client = None
         if AsyncOpenAI is not None and self._api_key:
             try:
-                self._client = AsyncOpenAI(api_key=self._api_key, timeout=settings.llm_timeout_seconds)
+                client_kwargs: Dict[str, Any] = {
+                    "api_key": self._api_key,
+                    "timeout": settings.llm_timeout_seconds,
+                }
+                if settings.openai_base_url:
+                    client_kwargs["base_url"] = settings.openai_base_url
+                self._client = AsyncOpenAI(**client_kwargs)
             except Exception as exc:
                 logger.warning(f"Failed to initialize OpenAI client: {exc}")
 

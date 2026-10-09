@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     llm_model: Optional[str] = None
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
+    openai_base_url: Optional[str] = None
 
     @field_validator("llm_temperature")
     @classmethod

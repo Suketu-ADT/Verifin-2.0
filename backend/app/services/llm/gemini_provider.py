@@ -26,7 +26,7 @@ T = TypeVar("T", bound=BaseModel)
 class GeminiProvider(LLMProvider):
     """Google Gemini LLM provider."""
 
-    DEFAULT_MODEL = "gemini-2.5-flash"
+    DEFAULT_MODEL = "gemini-2.0-flash"
 
     def __init__(
         self,
