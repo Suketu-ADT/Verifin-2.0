@@ -17,6 +17,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import settings
+from app.observability import metrics
 from app.repositories.api_key_repository import ApiKeyRepository
 from app.repositories.user_repository import UserRepository
 from app.security.tokens import decode_access_token
@@ -47,6 +48,7 @@ def hash_api_key(key: str) -> str:
 
 
 def _unauthorized(detail: str = "Authentication required.") -> HTTPException:
+    metrics.AUTH_FAILURES.labels("missing" if detail == "Authentication required." else "invalid").inc()
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail=detail,

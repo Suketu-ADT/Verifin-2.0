@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_per_minute: int = 120  # general API calls per principal or client address
     rate_limit_heavy_per_minute: int = 10  # verification starts, uploads, LLM calls
+    trust_proxy_headers: bool = False  # believe X-Forwarded-For (only behind a proxy you control)
     rate_limit_auth_per_minute: int = 10  # login and registration attempts per client address
 
     # ── Observability ────────────────────────────────────────────────────

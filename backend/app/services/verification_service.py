@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 
 from app.config import settings
+from app.observability import metrics
 from app.models.claim import (
     ClaimModel,
     EvidenceModel,
@@ -525,6 +526,9 @@ class VerificationService:
                 detail="Database error while saving verification results.",
             )
 
+        metrics.VERIFICATIONS.labels(overall_risk).inc()
+        for cm in claim_models:
+            metrics.CLAIMS.labels(cm.status).inc()
         logger.info(
             f"Verification session completed: ID={session_id}, score={overall_score}%, risk={overall_risk}, claims={len(claim_models)}"
         )

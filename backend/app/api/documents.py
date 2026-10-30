@@ -9,6 +9,7 @@ from app.repositories.document_repository import DocumentRepository
 from app.schemas.document import DocumentResponse, DocumentExtractFactsResponse
 from app.security import Principal, require_role
 from app.security.access import authorize_document
+from app.security.rate_limit import limit_heavy
 from app.services.document_service import DocumentService
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -29,7 +30,7 @@ async def list_documents(principal: Principal = Depends(require_role("viewer")))
     ]
 
 
-@router.post("/upload", response_model=DocumentResponse)
+@router.post("/upload", response_model=DocumentResponse, dependencies=[Depends(limit_heavy)])
 async def upload_document(
     file: UploadFile = File(..., description="PDF document to verify"),
     principal: Principal = Depends(require_role("analyst")),
@@ -75,7 +76,8 @@ async def get_document_tables(
     return await service.get_document_tables(document_id)
 
 
-@router.post("/{document_id}/extract-facts", response_model=DocumentExtractFactsResponse)
+@router.post("/{document_id}/extract-facts", response_model=DocumentExtractFactsResponse,
+             dependencies=[Depends(limit_heavy)])
 async def extract_document_facts(
     document_id: str,
     principal: Principal = Depends(require_role("analyst")),

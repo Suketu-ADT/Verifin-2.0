@@ -3,13 +3,35 @@ System health and status endpoints.
 """
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from app.security import Principal, require_role
+from app.security.rate_limit import limit_heavy
 from app.database.mongodb import ping_database
 from app.schemas.system import HealthResponse, ServicesHealth
 from app.services.embedding_service import get_embedding_service
 from app.services.nli_service import get_nli_service
 
 router = APIRouter(prefix="/system", tags=["System"])
+
+
+@router.get("/live")
+async def liveness() -> dict:
+    """Process is up. Orchestrators restart the container when this fails."""
+    return {"status": "alive"}
+
+
+@router.get("/ready")
+async def readiness() -> JSONResponse:
+    """Dependencies are usable. Orchestrators stop routing traffic here (503) until they are."""
+    db_ok = await ping_database()
+    emb_ok = get_embedding_service().is_healthy()
+    nli_ok = get_nli_service().is_healthy()
+    ready = db_ok and emb_ok and nli_ok
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={"status": "ready" if ready else "not_ready",
+                 "database": db_ok, "embedding": emb_ok, "nli": nli_ok},
+    )
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -61,7 +83,7 @@ async def get_llm_health(_: Principal = Depends(require_role("admin"))):
     return await provider.health_check()
 
 
-@router.post("/llm/readiness")
+@router.post("/llm/readiness", dependencies=[Depends(limit_heavy)])
 async def test_llm_readiness(_: Principal = Depends(require_role("admin"))):
     """
     Performs an explicit, bounded live readiness probe against the configured provider.

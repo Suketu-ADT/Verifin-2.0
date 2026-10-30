@@ -9,6 +9,7 @@ from app.schemas.verification import (
 )
 from app.security import Principal, require_role
 from app.security.access import authorize_document
+from app.security.rate_limit import limit_heavy
 from app.services.verification_service import VerificationService
 
 router = APIRouter(prefix="/verification", tags=["Verification"])
@@ -18,7 +19,7 @@ def get_verification_service() -> VerificationService:
     return VerificationService()
 
 
-@router.post("/start", response_model=VerificationResultResponse)
+@router.post("/start", response_model=VerificationResultResponse, dependencies=[Depends(limit_heavy)])
 async def start_verification(
     request: StartVerificationRequest,
     principal: Principal = Depends(require_role("analyst")),
