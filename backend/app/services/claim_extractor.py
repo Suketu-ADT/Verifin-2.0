@@ -153,10 +153,10 @@ class ClaimExtractor:
         return [x.strip() for x in sentences if x.strip()]
 
     LEAD_IN = re.compile(
-        r"^((?:in|for|during|as of|as at|over|at|by|since|throughout|between|within)[^,]{3,80},)\s+",
+        r"^((?:in|for|during|as of|as at|over|at|by|since|throughout|between|within)\b[^,]{3,80},)\s+",
         re.IGNORECASE,
     )
-    PERIOD_WORD = re.compile(r"(?:year|quarter|period|month|months|fiscal|fy|half|h1|h2|q[1-4])|(?:19|20)\d\d", re.IGNORECASE)
+    PERIOD_WORD = re.compile(r"\b(?:year|quarter|period|month|months|fiscal|half|h1|h2|q[1-4])\b|\bfy\s?\d{2,4}\b|\b(?:19|20)\d\d\b", re.IGNORECASE)
     VERB_START = re.compile(
         r"^(?:\w+ed|was|were|is|are|has|have|had|will|would|can|could|expects?|reports?|delivers?|achieves?|remains?)$",
         re.IGNORECASE,
