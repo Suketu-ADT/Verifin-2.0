@@ -56,7 +56,7 @@ LLM OUTPUT ➔ CLAIM DECOMPOSITION ➔ HYBRID EVIDENCE RETRIEVAL (dense + BM25) 
 - Page Recall@3 of retrieval 95.0%, MRR 0.885, ECE 0.183; mean 1.0 s per claim on CPU (1.6 s with the larger NLI model).
 - Weakest areas on test: paraphrased supported claims (83.9%) and unit swaps (93.3%). All five unverifiable subtypes score 87.5-100%.
 - The original pre-improvement system (v0) was not scored on test because its code no longer exists in that form; its dev-split numbers are shown below for the improvement history.
-- The LLM-judge with retrieved evidence has not been scored on test yet (pending).
+- Both LLM-judge baselines were also run once on the test split (see "Baselines, test split" below): with the same retrieved evidence Qwen 2.5 7B scores 82.2 macro-F1 against 95.2 for VERIFIN (McNemar p < 0.001).
 
 ### Method
 
@@ -136,6 +136,18 @@ Entity novelty, figure conflict, grounded support and the period check each make
 | LLM judge with VERIFIN's retrieved evidence (Qwen 2.5 7B) | 84.2 | 82.9 [78.7, 86.8] | p < 0.001 against v4; 14.2 s per claim on CPU against 1.0 s |
 
 A simple number-matching heuristic reaches 74.5 macro-F1 on this dataset because numeric edits are the dominant contradiction type. This is stated openly so the jury does not read the gap to v4 as proof against all baselines. The LLM-judge baselines are the comparison that matters: given the same retrieved evidence, a 7B instruction-tuned model reaches 82.9 macro-F1 against 96.7 for VERIFIN (McNemar p < 0.001), at fourteen times the latency.
+
+### Baselines, test split
+
+The same two LLM judges, run once on the held-out test split (240 claims) with no prompt changes after the dev run. All differences against VERIFIN are significant (exact McNemar, p < 0.001).
+
+| System | Accuracy [95% CI] | Macro-F1 [95% CI] | Mean s/claim (CPU) | Notes |
+|---|---|---|---|---|
+| **VERIFIN** | **94.6 [91.7, 97.5]** | **95.2 [92.3, 97.7]** | 1.0 | |
+| LLM judge, no retrieval (Qwen 2.5 7B) | 20.0 [15.0, 25.0] | 14.6 [10.5, 18.6] | 9.0 | answers UNVERIFIABLE for 231 of 240 claims |
+| LLM judge with VERIFIN's retrieved evidence (Qwen 2.5 7B) | 83.8 [78.8, 87.9] | 82.2 [76.8, 86.7] | 12.4 | misses period swaps (50.0%) and unit swaps (33.3%); unverifiable F1 76.9 |
+
+The test results reproduce the dev findings: the judge without the report cannot verify anything, and the judge with the same evidence is about 13 macro-F1 points behind VERIFIN at roughly twelve times the latency. Its any-unsupported flagging reaches precision 91.6% and recall 91.6% (false-positive rate 10.1%) against 93.4% and 97.7% (8.3%) for VERIFIN. As on dev, this characterises one small local model at temperature 0, not LLM judging in general.
 
 ### NLI model size (dev split)
 
