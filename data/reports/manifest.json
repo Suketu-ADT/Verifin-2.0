@@ -1,0 +1,11 @@
+{
+  "note": "Provenance and corrections for the evaluation corpus. The downloader labelled several files with the wrong year or document type; the 'identified_as' fields below were read from each PDF's own first page, not from the original file names.",
+  "documents": [
+    {"doc_key": "jpmorgan", "file": "jpmorgan_annual_report_2025.pdf", "company": "JPMorgan Chase", "identified_as": "Annual Report 2025", "pages": 364, "doc_type": "annual_report", "currency": "USD"},
+    {"doc_key": "reliance", "file": "reliance_integrated_annual_report_2025-26.pdf", "company": "Reliance Industries", "identified_as": "Integrated Annual Report 2025-26", "original_label": "2024-25", "pages": 147, "doc_type": "annual_report", "currency": "INR"},
+    {"doc_key": "sbi", "file": "sbi_annual_report_2025-26.pdf", "company": "State Bank of India", "identified_as": "Annual Report 2025-26", "original_label": "2024-25", "pages": 592, "doc_type": "annual_report", "currency": "INR"},
+    {"doc_key": "tata_motors", "file": "tata_motors_integrated_annual_report_2024-25.pdf", "company": "Tata Motors", "identified_as": "80th Integrated Annual Report 2024-25", "pages": 590, "doc_type": "annual_report", "currency": "INR"},
+    {"doc_key": "hdfc", "file": "hdfc_bank_32nd_agm_transcript.pdf", "company": "HDFC Bank", "identified_as": "Transcript of the 32nd Annual General Meeting", "original_label": "Annual Report 2024-25", "pages": 55, "doc_type": "agm_transcript", "currency": "INR", "caveat": "Not an annual report; narrative speech, few audited figures."},
+    {"doc_key": "wipro", "file": "wipro_79th_agm_notice_fy2024-25.pdf", "company": "Wipro", "identified_as": "Notice of the 79th Annual General Meeting", "original_label": "Annual Report 2024-25", "pages": 14, "doc_type": "agm_notice", "currency": "INR", "caveat": "Not an annual report; notice and explanatory statement only."}
+  ]
+}

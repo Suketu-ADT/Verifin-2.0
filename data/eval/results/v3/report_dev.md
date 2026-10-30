@@ -1,0 +1,84 @@
+# Evaluation results - `dev` split
+
+## Overall (3-way verdict)
+
+| System | n | Accuracy [95% CI] | Macro-F1 [95% CI] | Supp. F1 | Contr. F1 | Unver. F1 | p vs ref |
+|---|---|---|---|---|---|---|---|
+| v1/verifin | 354 | 92.9 [90.1, 95.5] | 93.9 [91.3, 96.1] | 92.8 | 90.5 | 98.4 |  |
+| v1/verifin [raw NLI] | 354 | 78.0 [73.2, 82.5] | 70.6 [64.6, 75.9] | 89.7 | 73.1 | 49.0 | 0.000 |
+| v3/verifin | 354 | 96.0 [93.8, 98.0] | 96.1 [93.7, 98.0] | 96.4 | 95.2 | 96.8 | 0.013 |
+| v3/verifin [raw NLI] | 354 | 78.0 [73.2, 82.5] | 70.6 [64.6, 75.9] | 89.7 | 73.1 | 49.0 | 0.000 |
+
+`p vs ref` is an exact McNemar test against `v1/verifin` on the same claims.
+
+## Hallucination flagging (claim flagged when verdict is not SUPPORTED)
+
+| System | Target | Precision | Recall | F1 | False-positive rate |
+|---|---|---|---|---|---|
+| v1/verifin | contradicted only | 59.6 | 95.0 | 73.2 | 33.5 |
+| v1/verifin | any unsupported | 90.7 | 96.7 | 93.6 | 10.4 |
+| v1/verifin [raw NLI] | contradicted only | 57.1 | 83.5 | 67.8 | 32.6 |
+| v1/verifin [raw NLI] | any unsupported | 91.0 | 89.0 | 89.9 | 9.2 |
+| v3/verifin | contradicted only | 62.8 | 99.2 | 76.9 | 30.5 |
+| v3/verifin | any unsupported | 94.2 | 99.4 | 96.8 | 6.4 |
+| v3/verifin [raw NLI] | contradicted only | 57.1 | 83.5 | 67.8 | 32.6 |
+| v3/verifin [raw NLI] | any unsupported | 91.0 | 89.0 | 89.9 | 9.2 |
+
+## Accuracy by error type
+
+| Label / subtype | v1/verifin | v1/verifin [raw NLI] | v3/verifin | v3/verifin [raw NLI] |
+|---|---|---|---|---|
+| CONTRADICTED/direction_flip | 95.7 (n=23) | 95.7 (n=23) | 95.7 (n=23) | 95.7 (n=23) |
+| CONTRADICTED/number_change | 95.1 (n=61) | 83.6 (n=61) | 98.4 (n=61) | 83.6 (n=61) |
+| CONTRADICTED/period_swap | 94.4 (n=18) | 61.1 (n=18) | 100.0 (n=18) | 61.1 (n=18) |
+| CONTRADICTED/unit_swap | 89.5 (n=19) | 57.9 (n=19) | 94.7 (n=19) | 57.9 (n=19) |
+| SUPPORTED/paraphrase | 87.5 (n=56) | 91.1 (n=56) | 89.3 (n=56) | 91.1 (n=56) |
+| SUPPORTED/verbatim | 90.6 (n=117) | 90.6 (n=117) | 95.7 (n=117) | 90.6 (n=117) |
+| UNVERIFIABLE/acquisition | 100.0 (n=8) | 0.0 (n=8) | 100.0 (n=8) | 0.0 (n=8) |
+| UNVERIFIABLE/appointment | 100.0 (n=6) | 0.0 (n=6) | 100.0 (n=6) | 0.0 (n=6) |
+| UNVERIFIABLE/bond | 100.0 (n=12) | 66.7 (n=12) | 100.0 (n=12) | 66.7 (n=12) |
+| UNVERIFIABLE/facility | 100.0 (n=15) | 80.0 (n=15) | 100.0 (n=15) | 80.0 (n=15) |
+| UNVERIFIABLE/penalty | 100.0 (n=19) | 21.1 (n=19) | 100.0 (n=19) | 21.1 (n=19) |
+
+## Retrieval, calibration and latency
+
+| System | Recall@k (page) | MRR | ECE | mean s/claim | p95 s/claim | errors |
+|---|---|---|---|---|---|---|
+| v1/verifin | 96.6 | 0.900 | 0.171 | 0.76 | 1.03 | 0 |
+| v1/verifin [raw NLI] | 96.6 | 0.900 | 0.171 | 0.76 | 1.03 | 0 |
+| v3/verifin | 96.6 | 0.900 | 0.175 | 0.73 | 0.98 | 0 |
+| v3/verifin [raw NLI] | 96.6 | 0.900 | 0.175 | 0.73 | 0.98 | 0 |
+
+## Confusion matrices (rows = truth, columns = prediction)
+
+**v1/verifin**
+
+| truth \ pred | SUPPORTED | CONTRADICTED | UNVERIFIABLE |
+|---|---|---|---|
+| SUPPORTED | 155 | 17 | 1 |
+| CONTRADICTED | 6 | 114 | 1 |
+| UNVERIFIABLE | 0 | 0 | 60 |
+
+**v1/verifin [raw NLI]**
+
+| truth \ pred | SUPPORTED | CONTRADICTED | UNVERIFIABLE |
+|---|---|---|---|
+| SUPPORTED | 157 | 8 | 8 |
+| CONTRADICTED | 20 | 95 | 6 |
+| UNVERIFIABLE | 0 | 36 | 24 |
+
+**v3/verifin**
+
+| truth \ pred | SUPPORTED | CONTRADICTED | UNVERIFIABLE |
+|---|---|---|---|
+| SUPPORTED | 162 | 9 | 2 |
+| CONTRADICTED | 1 | 118 | 2 |
+| UNVERIFIABLE | 0 | 0 | 60 |
+
+**v3/verifin [raw NLI]**
+
+| truth \ pred | SUPPORTED | CONTRADICTED | UNVERIFIABLE |
+|---|---|---|---|
+| SUPPORTED | 157 | 8 | 8 |
+| CONTRADICTED | 20 | 95 | 6 |
+| UNVERIFIABLE | 0 | 36 | 24 |
