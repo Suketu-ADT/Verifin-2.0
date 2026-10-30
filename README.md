@@ -212,7 +212,7 @@ cd backend
 python -m eval.build_dataset                                   # rebuild the dataset (needs Ollama + qwen2.5:7b)
 python -m eval.run --split dev --systems verifin --run v4       # score a system
 python -m eval.report --split dev --systems verifin --run v4    # tables + CI + McNemar
-python -m pytest                                                # 156 unit tests
+python -m pytest                                                # 164 unit tests
 ```
 
 Raw per-claim predictions are in `data/eval/results/<run>/<split>/`.
