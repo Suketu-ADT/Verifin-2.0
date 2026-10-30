@@ -1,0 +1,32 @@
+{
+  "description": "Hand-labelled probe on data/VERIFIN_sample_financial_report.pdf (Northstar Technologies, a synthetic table-heavy report). Labels were checked against the figures on pages 2-7 by reading them, not produced by a model. 'mgmt_summary' claims are the report's own Section 6 highlights, several of which contradict its financial statements by design.",
+  "document": "VERIFIN_sample_financial_report.pdf",
+  "claims": [
+    {"id": "MS-1", "group": "mgmt_summary", "label": "CONTRADICTED", "text": "Revenue grew 22.5% year over year to USD 486.75 million in FY2025.", "why": "growth is 18.0% (p4)"},
+    {"id": "MS-2", "group": "mgmt_summary", "label": "SUPPORTED", "text": "Operating expenses increased to USD 201.33 million in FY2025, including research and development spending of USD 92.1 million.", "why": "201,330 and 92,100 (p2)"},
+    {"id": "MS-3", "group": "mgmt_summary", "label": "CONTRADICTED", "text": "Net profit increased by 9.1% to USD 46.35 million, reflecting disciplined cost control across the business.", "why": "net profit decreased 9.1% (p4)"},
+    {"id": "MS-4", "group": "mgmt_summary", "label": "CONTRADICTED", "text": "Operating income for FY2025 was USD 74.25 million.", "why": "74.25 is FY2024; FY2025 is 71.25 (p2)"},
+    {"id": "MS-5", "group": "mgmt_summary", "label": "CONTRADICTED", "text": "Interest expense for FY2025 amounted to USD 9,450 million.", "why": "USD 9.45 million (p5): unit error"},
+    {"id": "MS-6", "group": "mgmt_summary", "label": "CONTRADICTED", "text": "Operating cash flow fully covered capital expenditure in FY2025, generating positive free cash flow of USD 7.2 million.", "why": "free cash flow is negative 7.2 (p4)"},
+    {"id": "MS-7", "group": "mgmt_summary", "label": "CONTRADICTED", "text": "Gross margin, calculated as gross profit divided by revenue, expanded to 58.0% in FY2025.", "why": "56.0%, decreased from 57.0% (p4)"},
+    {"id": "MS-8", "group": "mgmt_summary", "label": "SUPPORTED", "text": "Total assets reached USD 470.0 million at 31 March 2025.", "why": "470,000 (p3)"},
+    {"id": "MS-9", "group": "mgmt_summary", "label": "CONTRADICTED", "text": "Total assets grew by 25.0% compared with 31 March 2024.", "why": "17.5% (p4)"},
+    {"id": "MS-10", "group": "mgmt_summary", "label": "CONTRADICTED", "text": "Cloud Infrastructure Services contributed more than 60% of FY2025 revenue.", "why": "51.0% share (p7)"},
+    {"id": "MS-11", "group": "mgmt_summary", "label": "CONTRADICTED", "text": "Cash and cash equivalents increased by USD 11.5 million during FY2025.", "why": "decreased by 11.5 (p3, p4)"},
+
+    {"id": "T-1", "group": "true", "label": "SUPPORTED", "text": "Revenue increased from USD 412.5 million in FY2024 to USD 486.75 million in FY2025, an increase of USD 74.25 million or 18.0%.", "why": "p4"},
+    {"id": "T-2", "group": "true", "label": "SUPPORTED", "text": "Gross margin decreased from 57.0% in FY2024 to 56.0% in FY2025.", "why": "p4"},
+    {"id": "T-3", "group": "true", "label": "SUPPORTED", "text": "Net profit decreased from USD 51.0 million in FY2024 to USD 46.35 million in FY2025.", "why": "p4"},
+    {"id": "T-4", "group": "true", "label": "SUPPORTED", "text": "Cash and cash equivalents decreased by USD 11.5 million to USD 46.9 million at 31 March 2025.", "why": "p4"},
+    {"id": "T-5", "group": "true", "label": "SUPPORTED", "text": "Interest expense was USD 9.45 million in FY2025.", "why": "p5"},
+    {"id": "T-6", "group": "true", "label": "SUPPORTED", "text": "Total assets increased by 17.5% from USD 400.0 million to USD 470.0 million.", "why": "p4"},
+    {"id": "T-7", "group": "true", "label": "SUPPORTED", "text": "Dividends paid were USD 20.0 million in FY2025.", "why": "p5"},
+    {"id": "T-8", "group": "true", "label": "SUPPORTED", "text": "The weighted average number of shares in issue was 50.0 million in both years.", "why": "p5"},
+
+    {"id": "F-1", "group": "edited", "label": "CONTRADICTED", "text": "Revenue increased from USD 412.5 million in FY2024 to USD 520.0 million in FY2025.", "why": "number change"},
+    {"id": "F-2", "group": "edited", "label": "CONTRADICTED", "text": "Net profit increased from USD 51.0 million in FY2024 to USD 46.35 million in FY2025.", "why": "direction flip"},
+    {"id": "F-3", "group": "edited", "label": "CONTRADICTED", "text": "Interest expense was USD 9.45 million in FY2024.", "why": "period swap: FY2024 was 6.25"},
+    {"id": "F-4", "group": "edited", "label": "CONTRADICTED", "text": "Dividends paid were USD 20.0 billion in FY2025.", "why": "unit swap"},
+    {"id": "F-5", "group": "edited", "label": "UNVERIFIABLE", "text": "Northstar completed the acquisition of Helios Data Systems in FY2025.", "why": "invented entity"}
+  ]
+}

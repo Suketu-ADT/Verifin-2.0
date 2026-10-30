@@ -384,7 +384,8 @@ class OCRService:
         unit_name = default_units
         if default_units:
             for pat, mult, name in self.UNIT_PATTERNS:
-                if pat.search(default_units):
+                # accept the page text ("in millions") and the canonical name the detector returns ("million")
+                if default_units.strip().lower() == name or pat.search(default_units):
                     multiplier = mult
                     unit_name = name
                     break

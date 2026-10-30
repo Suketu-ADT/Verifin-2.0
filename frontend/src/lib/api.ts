@@ -114,6 +114,7 @@ export interface ClaimResponse {
   hallucination_risk_score?: number | null;
   reasoning_summary?: string | null;
   multi_hop_finding?: any;
+  decided_by?: string | null;
 }
 
 export interface VerificationResultResponse {

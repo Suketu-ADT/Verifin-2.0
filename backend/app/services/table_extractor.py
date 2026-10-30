@@ -164,6 +164,17 @@ class TableExtractionService:
 
         return extracted_tables
 
+    @classmethod
+    def _resolve_units(cls, units: Optional[str]) -> Tuple[float, Optional[str]]:
+        """Scale multiplier and canonical name for a unit given as page text ("in millions") or as the name
+        ``_detect_page_units_and_currency`` returns ("million"). Only matching the text form left every table
+        unscaled whenever the detected name was passed in."""
+        if units:
+            for pat, mult, name in cls.UNIT_PATTERNS:
+                if units.strip().lower() == name or pat.search(units):
+                    return mult, name
+        return 1.0, units
+
     def _process_raw_table(
         self,
         raw_rows: List[List[Optional[str]]],
@@ -198,14 +209,7 @@ class TableExtractionService:
             reporting_periods.append(match.group(0) if match else None)
 
         # Detect units and currencies
-        multiplier = 1.0
-        unit_name = default_units
-        if default_units:
-            for pat, mult, name in self.UNIT_PATTERNS:
-                if pat.search(default_units):
-                    multiplier = mult
-                    unit_name = name
-                    break
+        multiplier, unit_name = self._resolve_units(default_units)
 
         structured_rows: List[List[TableCellModel]] = []
         data_rows = cleaned_grid[1:]

@@ -138,6 +138,9 @@ export default function ClaimDetail() {
         <h1 className="text-xl font-semibold text-white leading-snug">"{activeClaim.claim_text}"</h1>
         <div className="text-xs text-slate-400 mt-2 font-mono uppercase tracking-wide">
           Claim Type: {activeClaim.claim_type}
+          {(activeClaim as { decided_by?: string | null }).decided_by && (
+            <span className="ml-3">Decided by: {(activeClaim as { decided_by?: string | null }).decided_by}</span>
+          )}
         </div>
       </div>
 

@@ -139,6 +139,17 @@ class NumericalReasonerService:
         re.IGNORECASE,
     )
 
+    # A trailing footnote marker on a table line item: "Revenue (a)", "Cost of goods sold (2)".
+    _FOOTNOTE_MARKER = re.compile(r"\s*(?:\([a-z0-9]{1,2}\)|\*+)\s*$", re.IGNORECASE)
+
+    @staticmethod
+    def _rounding_half_unit(entity: NumericEntity) -> float:
+        """Half of the last digit a figure is stated to, in base units: "$487 million" is within 500,000 of the
+        true value, "$486.75 million" within 5,000."""
+        decimals = re.search(r"\d\.(\d+)", entity.raw_text)
+        places = len(decimals.group(1)) if decimals else 0
+        return 0.5 * (10 ** -places) * entity.unit_multiplier
+
     def __init__(self, default_percentage_tolerance: float = 0.5):
         """
         Args:
@@ -171,7 +182,8 @@ class NumericalReasonerService:
             r"(?P<curr>[$€£¥₹]|USD\b|EUR\b|GBP\b|JPY\b|INR\b)?"
             r"\s*"
             r"(?P<paren_open>\()?"
-            r"(?P<num>\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)"
+            # comma-grouped digits first, else a plain run: the old order read "2025" as "202" and "5"
+            r"(?P<num>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)"
             r"(?P<paren_close>\))?"
             r"\s*"
             r"(?P<unit>trillion|trillions|billion|billions|million|millions|thousand|thousands|\b[kKmMbBtT]\b)?"
@@ -843,15 +855,17 @@ class NumericalReasonerService:
 
         # Search across all extracted tables
         for table in tables:
+            period_columns = [i for i, p in enumerate(table.reporting_periods) if p]
             for row in table.rows:
                 if not row or len(row) < 2:
                     continue
                 line_item_label = row[0].raw_text.strip()
-                if len(line_item_label) < 3:
+                match_label = self._FOOTNOTE_MARKER.sub("", line_item_label).strip()  # "Revenue (a)" -> "Revenue"
+                if len(match_label) < 3:
                     continue
 
                 # If claim text mentions the table's line item
-                if line_item_label.lower() in claim_text.lower():
+                if match_label.lower() in claim_text.lower():
                     target_cell = None
                     if primary_period:
                         for col_idx, rep_p in enumerate(table.reporting_periods):
@@ -859,14 +873,37 @@ class NumericalReasonerService:
                                 if col_idx < len(row):
                                     target_cell = row[col_idx]
                                     break
+                        if target_cell is None and period_columns:
+                            continue  # the table has period columns but not the one the claim names: never guess
+                    elif len(period_columns) >= 2:
+                        continue  # several period columns and the claim names no period: ambiguous
 
-                    if not target_cell:
-                        target_cell = next((c for c in row[1:] if c.is_numeric), None)
+                    if target_cell is None:
+                        numeric_cells = [c for c in row[1:] if c.is_numeric]
+                        target_cell = numeric_cells[0] if len(numeric_cells) == 1 else None
 
                     if target_cell and target_cell.normalized_value is not None:
-                        claim_num = claim_entities[0].normalized_value
-                        diff = abs(claim_num - target_cell.normalized_value)
-                        tolerance = custom_tolerance if custom_tolerance is not None else 0.5
+                        # Compare like with like: a percentage claim against a percentage cell, an amount against an
+                        # amount. A figure with a currency or scale ("$486.75 million") is preferred over a bare
+                        # number such as the day in "31 March 2025".
+                        cell_is_percentage = "%" in target_cell.raw_text
+                        compatible = [e for e in claim_entities if e.is_percentage == cell_is_percentage]
+                        scaled = [e for e in compatible if e.currency or e.unit_multiplier != 1.0 or e.is_percentage]
+                        candidates = scaled or compatible
+                        if len(candidates) != 1:
+                            # No figure, or several ("fell by $11.5 million to $46.9 million"): which one belongs to
+                            # this row is a guess, and a wrong guess is a false contradiction. Leave it to the other checks.
+                            continue
+                        claim_entity = candidates[0]
+                        claim_num = claim_entity.normalized_value
+                        cell_value = target_cell.normalized_value
+                        if not claim_entity.is_negative:
+                            # Statements give magnitudes ("interest expense was $9.45 million") while tables show
+                            # deductions in parentheses, so a positive claim is compared with the cell's magnitude.
+                            cell_value = abs(cell_value)
+                        diff = abs(claim_num - cell_value)
+                        # A figure stated to fewer decimals ("$487 million") is right when it rounds to the cell value.
+                        tolerance = custom_tolerance if custom_tolerance is not None else max(0.5, self._rounding_half_unit(claim_entity))
                         outcome = "VALIDATED" if diff <= tolerance else "MISMATCH"
 
                         is_ocr = getattr(target_cell, "is_ocr", False) or getattr(table, "is_ocr", False)
@@ -899,7 +936,7 @@ class NumericalReasonerService:
                                 "needs_review": needs_review,
                                 "requires_human_review": needs_review,
                             },
-                            computed_result=target_cell.normalized_value,
+                            computed_result=cell_value,
                             reported_result=claim_num,
                             tolerance=tolerance,
                             comparison_outcome=outcome,
