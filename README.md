@@ -208,14 +208,15 @@ On this dataset BM25 retrieves the gold page best (99.0% vs 96.6% for hybrid) be
 
 ### Known limitations (read before quoting the numbers)
 
-- **Dev split only.** Figures are tuned on the dev errors; expect lower numbers on test.
+- **Dev numbers are optimistic.** Rules were tuned on the dev errors; the test split (scored once, pipeline 4.0) is the figure to quote. Pipeline 4.1 (table-check fixes) was verified on dev (unchanged, 96.7) and on the probe below, and was **not** re-scored on test.
+- **Tables and statement layouts are the weakest area.** The benchmark has no structured-table claims. On a 24-claim hand-labelled probe of a synthetic table-heavy report, 21 are right (87.5%); see [docs/MODEL_CARD.md](docs/MODEL_CARD.md).
 - **Unverifiable = invented names only.** The 100% score on that class comes from a rule that flags capitalised names absent from the document, which matches how those claims were generated. Real unverifiable claims (plausible facts the report simply does not state) are not covered.
 - **Contradictions are programmatic edits**, mostly numeric. Subtle semantic contradictions are under-represented. `period_swap` labels are arguable when a report states both years.
 - **Verbatim claims are easy** (95.7%); paraphrases are harder (91.1%).
 - **Remaining 13 dev errors:** 3 supported verbatim claims wrongly contradicted by the NLI model, several caused by the right sentence not being retrieved (boilerplate repeated across years), and 2 claims about Tata interest expense whose evidence sentence is not retrieved.
 - **Same-sentence figure swaps** (for example exchanging this year's and last year's values) are grounded as long as both values appear in one sentence; only NLI and direction checks can catch them.
 - Labels are correct by construction but have **not been human-audited**; a 40-50 claim spot-check with inter-rater agreement is planned.
-- No OCR (scanned pages are skipped). HDFC and Wipro are transcript/notice documents, not full annual reports.
+- Scanned pages go through OCR when Tesseract is installed; OCR accuracy has not been measured. HDFC and Wipro are transcript/notice documents, not full annual reports.
 
 ### Reproduce
 
@@ -224,10 +225,22 @@ cd backend
 python -m eval.build_dataset                                   # rebuild the dataset (needs Ollama + qwen2.5:7b)
 python -m eval.run --split dev --systems verifin --run v4       # score a system
 python -m eval.report --split dev --systems verifin --run v4    # tables + CI + McNemar
-python -m pytest                                                # 164 unit tests
+python -m pytest                                                # 279 tests pass, 1 skipped
+python ../scripts/probe_report.py http://127.0.0.1:8000         # 24-claim table probe (needs a running API)
 ```
 
 Raw per-claim predictions are in `data/eval/results/<run>/<split>/`.
+
+## 📚 Documentation
+
+| Document | For |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the parts fit and why |
+| [docs/MODEL_CARD.md](docs/MODEL_CARD.md) | intended use, measured quality, limitations |
+| [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | threats, controls and the risk that remains |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | operating a deployment |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | free-tier deployment steps |
+| [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | a rehearsed ten-minute demo |
 
 ## 💻 Getting Started
 
