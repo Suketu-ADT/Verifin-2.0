@@ -7,8 +7,13 @@ even if MongoDB Atlas is temporarily unreachable (e.g. IP whitelist / network re
 from __future__ import annotations
 
 import copy
+import json
+import os
 import uuid
 from typing import Any, Dict, List, Optional
+
+from app.config import settings
+from app.utils.logging import logger
 
 
 class InsertOneResult:
@@ -101,13 +106,6 @@ def _matches_filter(doc: Dict[str, Any], query: Optional[Dict[str, Any]]) -> boo
                 return False
     return True
 
-
-import json
-import os
-from pathlib import Path
-
-from app.config import settings
-from app.utils.logging import logger
 
 # Anchored to the project data directory so the store location does not depend
 # on the process working directory.

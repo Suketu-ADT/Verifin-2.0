@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.document import DocumentModel
-from app.models.verification import VerificationSessionModel
 from app.schemas.retrieval import EvidenceChunkResponse
 from app.schemas.verification import StartVerificationRequest
 from app.services.claim_extractor import ClaimExtractor

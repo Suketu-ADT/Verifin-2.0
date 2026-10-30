@@ -1,0 +1,8 @@
+# Allow-list: the API image needs only these paths from the repository.
+*
+!backend/requirements.txt
+!backend/requirements.lock.txt
+!backend/app/
+!data/demo/
+**/__pycache__
+**/*.pyc

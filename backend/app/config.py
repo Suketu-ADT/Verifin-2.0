@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     mongodb_connect_timeout_ms: int = 5000
 
     # ── Server ───────────────────────────────────────────────────────────
-    api_host: str = "0.0.0.0"
+    api_host: str = "0.0.0.0"  # nosec B104 - binds all interfaces on purpose: the service runs in a container behind a proxy
     api_port: int = 8000
     environment: str = "development"
     debug: bool = True
@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     # ── Background jobs ──────────────────────────────────────────────────
     max_concurrent_jobs: int = 2  # verification jobs running at once per instance
     job_queue_limit: int = 50  # queued jobs per instance before new ones are refused
+
+    # ── Data store ───────────────────────────────────────────────────────
+    # Local development may fall back to an in-memory database when MongoDB is unreachable. Production never does:
+    # it refuses to start, so an outage is visible instead of silently losing data on restart.
+    allow_db_fallback: bool = True
 
     # ── Frontend & CORS ──────────────────────────────────────────────────
     frontend_url: str = "http://localhost:5173"
@@ -127,6 +132,7 @@ class Settings(BaseSettings):
         """A production deployment must not run open, with a default secret, or in debug mode."""
         if self.environment.lower() == "production":
             self.auth_enabled = True
+            self.allow_db_fallback = False
             if self.debug:
                 raise ValueError("DEBUG must be false when ENVIRONMENT=production")
             if len(self.jwt_secret) < 32 or self.jwt_secret == "dev-insecure-secret-change-me":

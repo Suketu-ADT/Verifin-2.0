@@ -5,11 +5,6 @@ scanned document detection, and reasoning engine integration.
 """
 
 import pytest
-from app.models.table import (
-    FinancialTableModel,
-    TableCellModel,
-    TableBoundingBox,
-)
 from app.services.table_extractor import TableExtractionService
 from app.services.numerical_reasoner import NumericalReasonerService
 

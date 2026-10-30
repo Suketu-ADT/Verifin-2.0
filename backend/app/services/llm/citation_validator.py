@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import difflib
 import re
-from typing import Any, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from app.models.chunk import DocumentChunkModel

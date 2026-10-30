@@ -11,7 +11,7 @@ from __future__ import annotations
 import io
 import re
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from app.models.table import (
     FinancialTableModel,

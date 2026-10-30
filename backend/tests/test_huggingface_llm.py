@@ -17,13 +17,11 @@ from app.models.chunk import DocumentChunkModel
 from app.schemas.llm import (
     LLMClaimExtractionResponse,
     LLMExplanationResponse,
-    LLMExtractedClaim,
 )
 from app.services.llm.exceptions import (
     LLMAuthenticationError,
     LLMInputLimitExceededError,
     LLMModelNotFoundError,
-    LLMRateLimitError,
     LLMSchemaValidationError,
     LLMTimeoutError,
 )
@@ -179,7 +177,7 @@ async def test_huggingface_authentication_error_fails_fast():
     """Verify 401 Unauthorized raises LLMAuthenticationError immediately without retrying."""
     mock_client = MagicMock()
     auth_err = Exception("401 Unauthorized: Invalid HF token")
-    setattr(auth_err, "status_code", 401)
+    auth_err.status_code = 401
     mock_client.chat_completion = AsyncMock(side_effect=auth_err)
 
     provider = HuggingFaceProvider(token="invalid_token", client=mock_client, max_retries=2)
@@ -198,7 +196,7 @@ async def test_huggingface_model_not_found_error_fails_fast():
     """Verify 404 Not Found raises LLMModelNotFoundError without retrying."""
     mock_client = MagicMock()
     not_found_err = Exception("404 Model Not Found on provider")
-    setattr(not_found_err, "status_code", 404)
+    not_found_err.status_code = 404
     mock_client.chat_completion = AsyncMock(side_effect=not_found_err)
 
     provider = HuggingFaceProvider(
@@ -219,7 +217,7 @@ async def test_huggingface_rate_limit_transient_retry_success():
     mock_client = MagicMock()
 
     rate_err = Exception("429 Too Many Requests")
-    setattr(rate_err, "status_code", 429)
+    rate_err.status_code = 429
 
     success_choice = MagicMock()
     success_choice.message.content = '{"claims": [{"claim_text": "Revenue was $10M."}], "total_claims": 1}'

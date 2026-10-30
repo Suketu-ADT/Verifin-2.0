@@ -1,7 +1,7 @@
 """Background verification jobs: queueing, lifecycle, failure handling, backpressure, recovery."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient

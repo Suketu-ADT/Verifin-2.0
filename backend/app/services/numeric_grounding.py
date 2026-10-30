@@ -45,7 +45,7 @@ _STOPWORDS: Set[str] = {
     "this", "that", "with", "from", "which", "were", "been", "have", "their", "there", "these",
     "those", "than", "then", "also", "such", "into", "over", "under", "during", "while", "about",
     "other", "more", "most", "some", "year", "years", "ended", "company", "firm", "bank", "total",
-    "during", "per", "cent", "percent", "crore", "crores", "lakh", "million", "billion",
+    "per", "cent", "percent", "crore", "crores", "lakh", "million", "billion",
 }
 _WORD_RE = re.compile(r"[a-z][a-z\-]{3,}")
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9₹$`])")

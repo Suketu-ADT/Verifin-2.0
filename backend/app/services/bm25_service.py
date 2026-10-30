@@ -17,7 +17,6 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from app.config import settings
 from app.models.chunk import DocumentChunkModel
-from app.utils.logging import logger
 
 try:
     from rank_bm25 import BM25Okapi as ExternalBM25Okapi

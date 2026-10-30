@@ -2,21 +2,18 @@
 Unit and integration tests for BM25 Hybrid RAG and Enhanced Claim Verification.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.models.chunk import DocumentChunkModel
 from app.models.document import DocumentModel
-from app.models.table import FinancialTableModel, TableCellModel
 from app.schemas.verification import StartVerificationRequest
 from app.services.bm25_service import (
     BM25DocumentIndex,
-    BM25Service,
     FinancialTokenizer,
     NativeBM25Okapi,
 )
 from app.services.claim_extractor import ClaimExtractor
-from app.services.nli_service import NLIService
 from app.services.retrieval_service import RetrievalService
 from app.services.verification_service import VerificationService
 

@@ -6,11 +6,10 @@ Unit and integration tests for VERIFIN 2.0 Phase 7 milestone:
 - Part D: Human-in-the-Loop Review Queue, Decision Audit Trails, and User Scoping
 """
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from app.main import app
 from app.models.chunk import DocumentChunkModel
@@ -19,18 +18,11 @@ from app.models.table import FinancialTableModel, TableCellModel
 from app.schemas.llm import (
     LLMClaimExtractionResponse,
     LLMExtractedClaim,
-    LLMExplanationResponse,
-    LLMMultiHopSynthesis,
 )
-from app.services.llm.base import LLMProvider
 from app.services.llm.citation_validator import CitationValidator
-from app.services.llm.factory import get_llm_provider
 from app.services.llm.financial_extractor import FinancialExtractorService
-from app.services.llm.gemini_provider import GeminiProvider
 from app.services.llm.mock_provider import MockLLMProvider
-from app.services.llm.openai_provider import OpenAIProvider
 from app.services.multi_hop_reasoner import (
-    EvidenceNode,
     MultiHopReasonerService,
     MultiHopResult,
 )

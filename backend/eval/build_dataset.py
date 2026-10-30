@@ -320,7 +320,7 @@ def fabricate_claim(doc: CorpusDoc, rng: random.Random, text_lower: str) -> Tupl
 # ── Assembly ─────────────────────────────────────────────────────────────────
 
 def split_for(key: str) -> str:
-    h = int(hashlib.md5(key.encode("utf-8")).hexdigest(), 16) % 1000 / 1000
+    h = int(hashlib.md5(key.encode("utf-8"), usedforsecurity=False).hexdigest(), 16) % 1000 / 1000
     return "dev" if h < DEV_FRACTION else "test"
 
 

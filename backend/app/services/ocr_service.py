@@ -8,12 +8,11 @@ row/column structures, and flags uncertain numerical cells for human review.
 
 from __future__ import annotations
 
-import io
 import os
 import re
 import shutil
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional
 
 from PIL import Image, ImageOps
 

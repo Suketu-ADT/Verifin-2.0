@@ -31,8 +31,10 @@ torch>=2.2.0
 numpy>=1.26.0
 rank-bm25>=0.2.2
 
-# Testing & Client
-pytest>=8.0.0
-pytest-asyncio>=0.23.0
+# Security & Observability
+PyJWT>=2.8.0
+prometheus-client>=0.20.0
+
+# HTTP client (LLM providers, tests)
 httpx>=0.27.0
 

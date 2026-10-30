@@ -14,7 +14,6 @@ from typing import Dict, List
 import numpy as np
 
 from eval import metrics as M
-from eval.build_dataset import DATASET_PATH
 from eval.run import RESULTS_DIR, load_items, result_path
 
 

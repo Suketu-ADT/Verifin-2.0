@@ -164,7 +164,6 @@ class GroundedExplanationService:
             # Validate every source_fact or quoted citation against retrieved chunks
             audited_facts: List[str] = []
             audit_checks: List[Dict[str, Any]] = []
-            has_hallucination = False
 
             for fact in explanation_res.source_facts:
                 val = self.validator.validate_citation(
@@ -182,7 +181,6 @@ class GroundedExplanationService:
                 if val.is_valid:
                     audited_facts.append(fact)
                 else:
-                    has_hallucination = True
                     logger.warning(
                         f"Explanation grounding rejection: Fact '{fact[:50]}' was not verifiable in retrieved chunks."
                     )

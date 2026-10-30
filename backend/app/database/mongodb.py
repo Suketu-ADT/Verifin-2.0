@@ -65,7 +65,11 @@ async def connect_to_mongo() -> None:
             logger.warning(
                 f"MongoDB connection failed during startup: {type(exc).__name__}: {err_msg[:200]}"
             )
-        # Seamlessly activate in-memory database fallback so uploads and verifications work
+        if not settings.allow_db_fallback:
+            raise RuntimeError(
+                "MongoDB is unreachable and the in-memory fallback is disabled (ALLOW_DB_FALLBACK=false / production)."
+            ) from exc
+        # Development only: activate the in-memory fallback so uploads and verifications still work
         manager.database = fallback_database
         manager.is_fallback = True
         logger.info("Activated local in-memory database fallback for seamless operation.")

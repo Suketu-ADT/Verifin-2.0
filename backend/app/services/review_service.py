@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from fastapi import HTTPException, status
 
 from app.models.review import ReviewAuditRecord, ReviewItem

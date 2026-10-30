@@ -2,7 +2,6 @@
 Regression tests for issues found in the project audit.
 """
 
-import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 

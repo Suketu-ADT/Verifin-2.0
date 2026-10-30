@@ -1,0 +1,7 @@
+# Development, test and CI tooling (not installed in the production image)
+-r requirements.txt
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+ruff>=0.6.0
+bandit>=1.7.9
+pip-audit>=2.7.0

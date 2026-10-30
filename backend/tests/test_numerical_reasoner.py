@@ -7,8 +7,6 @@ edge cases (zero division, negative values, missing inputs), and temporal anchor
 import pytest
 from app.services.numerical_reasoner import (
     NumericalReasonerService,
-    NumericEntity,
-    TemporalPeriod,
 )
 from app.schemas.verification import StartVerificationRequest
 from app.services.verification_service import VerificationService

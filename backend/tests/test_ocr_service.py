@@ -11,15 +11,13 @@ Validates:
 8. Empirical ground truth evaluation (CER / WER) without unverified claims.
 """
 
-from typing import List
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import pytest
 from PIL import Image, ImageDraw
 
-from app.models.ocr import OCRBoundingBox, OCRPageResult, OCRWord
-from app.models.table import FinancialTableModel, TableCellModel
+from app.models.ocr import OCRBoundingBox, OCRWord
 from app.services.chunking_service import ChunkingService
-from app.services.ocr_service import OCRService, get_ocr_service
+from app.services.ocr_service import OCRService
 from app.services.numerical_reasoner import NumericalReasonerService
 
 
@@ -256,7 +254,7 @@ def test_selective_ingestion_and_duplicate_prevention(ocr_service):
     # If text is sufficient, detect_scanned_page returns False
     mock_ocr.detect_scanned_page.side_effect = lambda txt, image_count=0: len(txt.strip()) < 40
 
-    chunk_service = ChunkingService(ocr_service=mock_ocr)
+    ChunkingService(ocr_service=mock_ocr)
 
     # Simulate native digital text extraction
     digital_page_text = (

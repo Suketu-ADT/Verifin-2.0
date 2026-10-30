@@ -297,3 +297,20 @@ async def test_legacy_unversioned_paths_still_work_and_are_deprecated(client):
     assert "/api/v1/documents/upload" in paths and "/api/documents/upload" in paths
     assert paths["/api/documents/upload"]["post"].get("deprecated") is True
     assert not paths["/api/v1/documents/upload"]["post"].get("deprecated")
+
+
+def test_production_disables_the_in_memory_database_fallback():
+    prod = Settings(environment="production", debug=False, jwt_secret="s" * 40, allow_db_fallback=True)
+    assert prod.allow_db_fallback is False
+
+
+@pytest.mark.asyncio
+async def test_startup_fails_instead_of_falling_back_when_fallback_is_disabled(monkeypatch):
+    class Unreachable:
+        def __init__(self, *args, **kwargs):
+            raise ConnectionError("no route to host")
+
+    monkeypatch.setattr(mongodb, "AsyncIOMotorClient", Unreachable)
+    monkeypatch.setattr(settings, "allow_db_fallback", False)
+    with pytest.raises(RuntimeError, match="fallback is disabled"):
+        await mongodb.connect_to_mongo()

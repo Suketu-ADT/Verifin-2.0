@@ -6,7 +6,6 @@ from typing import List, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.database.mongodb import get_database
 from app.models.table import FinancialTableModel
-from app.utils.logging import logger
 
 
 class TableRepository:

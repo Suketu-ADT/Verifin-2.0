@@ -11,7 +11,7 @@ import asyncio
 import json
 import random
 import re
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Dict, Optional, Type, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from app.config import settings
@@ -322,7 +322,7 @@ class HuggingFaceProvider(LLMProvider):
 
         try:
             # Minimal bounded probe
-            test_resp = await self._client.chat_completion(
+            await self._client.chat_completion(
                 model=self._model_name,
                 messages=[{"role": "user", "content": "ping"}],
                 max_tokens=5,

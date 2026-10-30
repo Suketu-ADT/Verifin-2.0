@@ -7,13 +7,12 @@ Enforces deterministic arithmetic for compound calculations (e.g. Net Debt).
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from app.models.chunk import DocumentChunkModel
-from app.models.table import FinancialTableModel, TableCellModel
-from app.services.numerical_reasoner import NumericEntity, NumericalReasonerService
-from app.utils.logging import logger
+from app.models.table import FinancialTableModel
+from app.services.numerical_reasoner import NumericalReasonerService
 
 
 class EvidenceNode(BaseModel):

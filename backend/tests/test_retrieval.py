@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.config import settings
 from app.main import app
 from app.models.chunk import DocumentChunkModel
 from app.models.document import DocumentModel

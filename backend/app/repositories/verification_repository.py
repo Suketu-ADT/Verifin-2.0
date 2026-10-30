@@ -8,7 +8,6 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.database.mongodb import get_database
 from app.models.verification import VerificationSessionModel
 from app.models.claim import ClaimModel
-from app.utils.logging import logger
 
 
 class VerificationRepository:

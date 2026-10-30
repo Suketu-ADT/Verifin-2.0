@@ -1,0 +1,44 @@
+# Local production-like stack: API + MongoDB.
+#   JWT_SECRET=$(openssl rand -hex 32) docker compose up --build
+# The API refuses to start in production mode without a strong JWT_SECRET or without a reachable database.
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DATABASE: verifin
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a random string of at least 32 characters}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-false}
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/data/uploads
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  mongo-data:
+  uploads:

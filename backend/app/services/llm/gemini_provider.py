@@ -5,7 +5,6 @@ Supports structured outputs with Pydantic schemas.
 
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, Optional, Type, TypeVar
 from pydantic import BaseModel, ValidationError
 
