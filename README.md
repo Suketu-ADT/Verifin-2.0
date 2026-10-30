@@ -36,7 +36,27 @@ LLM OUTPUT ➔ CLAIM DECOMPOSITION ➔ HYBRID EVIDENCE RETRIEVAL (dense + BM25) 
 
 ## 📊 Evaluation Results
 
-> **Status:** all numbers below are on the **development split**, which was used to find and fix errors, so they are optimistic. The **test split (240 claims) has been kept locked and not yet scored**; its results will be added once, at the end, with no further tuning. Pending items are marked *not yet run*.
+> **Status:** the **test split (240 claims) was scored exactly once**, after the system, thresholds and defaults were frozen using the dev split only. The test results are in the first table below. Development-split numbers further down were used to find and fix errors, so they are slightly optimistic; the held-out test numbers are the ones to quote.
+
+### Held-out test results (n = 240; 109 supported / 91 contradicted / 40 unverifiable)
+
+| System | Accuracy [95% CI] | Macro-F1 [95% CI] | Supported F1 | Contradicted F1 | Unverifiable F1 |
+|---|---|---|---|---|---|
+| **VERIFIN (default)** | **94.6 [91.7, 97.5]** | **95.2 [92.3, 97.7]** | 94.3 | 93.6 | 97.5 |
+| VERIFIN end-to-end (real claim extractor) | 93.8 [90.4, 96.7] | 94.2 [90.9, 97.0] | 93.8 | 92.6 | 96.3 |
+| VERIFIN with larger NLI (deberta-v3-base) | 93.3 [90.0, 96.2] | 93.7 [90.3, 96.5] | 93.3 | 92.6 | 95.1 |
+| VERIFIN, raw NLI output only (no deterministic checks) | 75.8 [70.0, 80.8] | 66.8 [59.2, 73.0] | 88.0 | 73.6 | 38.7 |
+| `number_match` heuristic (no ML) | 81.7 [76.2, 86.7] | 79.7 [73.2, 85.1] | 86.9 | 77.3 | 75.0 |
+
+- Test macro-F1 (95.2) is 1.5 points below dev (96.7), inside the confidence interval: the expected small drop after tuning on dev, with no sign of a large overfit.
+- Differences between VERIFIN, the end-to-end variant and the larger NLI model are **not statistically significant** (McNemar p = 0.63 and 0.38). The deterministic layer is what matters: raw NLI alone scores 66.8 and VERIFIN 95.2 (p < 0.001).
+- VERIFIN beats the number-matching heuristic by 15.5 macro-F1 (p < 0.001). The heuristic scores 0% on direction flips and unit swaps.
+- Flagging view (claim flagged when not SUPPORTED): any-unsupported precision 93.4%, recall 97.7%, false-positive rate 8.3%; contradicted-only recall 96.7%.
+- Confusion matrix (rows = truth): supported 100 / 8 / 1, contradicted 3 / 88 / 0, unverifiable 0 / 1 / 39 (columns: supported / contradicted / unverifiable).
+- Page Recall@3 of retrieval 95.0%, MRR 0.885, ECE 0.183; mean 1.0 s per claim on CPU (1.6 s with the larger NLI model).
+- Weakest areas on test: paraphrased supported claims (83.9%) and unit swaps (93.3%). All five unverifiable subtypes score 87.5-100%.
+- The original pre-improvement system (v0) was not scored on test because its code no longer exists in that form; its dev-split numbers are shown below for the improvement history.
+- The LLM-judge with retrieved evidence has not been scored on test yet (pending).
 
 ### Method
 
