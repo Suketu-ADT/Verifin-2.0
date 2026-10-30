@@ -3,7 +3,7 @@ Verification endpoints for initiating verification sessions and polling results.
 """
 
 import uuid
-from typing import Literal
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
 from starlette.concurrency import run_in_threadpool
@@ -19,6 +19,7 @@ from app.schemas.verification import (
     VerificationJobResponse,
     VerificationResultResponse,
     VerificationStatusResponse,
+    VerificationSummary,
 )
 from app.repositories.document_repository import DocumentRepository
 from app.security import Principal, require_role
@@ -34,6 +35,30 @@ router = APIRouter(prefix="/verification", tags=["Verification"])
 
 def get_verification_service() -> VerificationService:
     return VerificationService()
+
+
+@router.get("", response_model=List[VerificationSummary])
+async def list_verifications(
+    limit: int = Query(50, ge=1, le=100),
+    status_filter: Optional[Literal["queued", "running", "completed", "failed"]] = Query(None, alias="status"),
+    principal: Principal = Depends(require_role("viewer")),
+) -> List[VerificationSummary]:
+    """The caller's organisation's verifications, newest first."""
+    sessions = await VerificationRepository().list_for_tenant(principal.tenant_id, limit=limit, status=status_filter)
+    names = {}
+    documents = DocumentRepository()
+    for doc_id in {s.document_id for s in sessions}:
+        document = await documents.get_document_by_id(doc_id)
+        names[doc_id] = document.filename if document else None
+    return [
+        VerificationSummary(
+            id=s.id, document_id=s.document_id, document_name=names.get(s.document_id),
+            statement_preview=(s.llm_output[:157] + "...") if len(s.llm_output) > 160 else s.llm_output,
+            status=s.status, risk_level=s.risk_level, overall_score=s.overall_score,
+            claim_counts=s.claim_counts, created_at=s.created_at,
+        )
+        for s in sessions
+    ]
 
 
 @router.post("/start", response_model=VerificationResultResponse, dependencies=[Depends(limit_heavy)])

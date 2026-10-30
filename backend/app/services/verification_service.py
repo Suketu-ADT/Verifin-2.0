@@ -528,6 +528,7 @@ class VerificationService:
             status="completed",
             overall_score=overall_score,
             risk_level=overall_risk,
+            claim_counts=dict(Counter(c.status for c in claim_models)),
             provenance=build_provenance(
                 document=document,
                 llm_text=llm_text,

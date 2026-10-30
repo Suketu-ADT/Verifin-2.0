@@ -615,3 +615,24 @@ export async function listAuditEvents(params: { action?: string; limit?: number;
 export async function verifyAuditChain(): Promise<AuditChainStatus> {
   return (await api.get<AuditChainStatus>('/api/v1/audit/verify')).data;
 }
+
+// ---------------------------------------------------------------------------
+// Verification history
+// ---------------------------------------------------------------------------
+
+export interface VerificationSummary {
+  id: string;
+  document_id: string;
+  document_name: string | null;
+  statement_preview: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  risk_level: string;
+  overall_score: number;
+  /** verdict -> number of claims; empty for runs recorded before counts were stored */
+  claim_counts: Record<string, number>;
+  created_at: string;
+}
+
+export async function listVerifications(limit = 100): Promise<VerificationSummary[]> {
+  return (await api.get<VerificationSummary[]>('/api/v1/verification', { params: { limit } })).data;
+}

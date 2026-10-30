@@ -18,5 +18,6 @@ class VerificationSessionModel(BaseModel):
     overall_score: float = 0.0
     risk_level: str = "PENDING"
     provenance: Dict[str, Any] = Field(default_factory=dict)
+    claim_counts: Dict[str, int] = Field(default_factory=dict)  # verdict -> number of claims, set when completed
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -55,9 +55,12 @@ class VerificationRepository:
         )
         return int(result.modified_count)
 
-    async def list_for_tenant(self, tenant_id: str, limit: int = 500) -> List[VerificationSessionModel]:
-        """A tenant's sessions, newest first."""
-        rows = await self.sessions_collection.find({"tenant_id": tenant_id}).sort("created_at", -1).limit(limit).to_list(limit)
+    async def list_for_tenant(
+        self, tenant_id: str, limit: int = 500, status: Optional[str] = None
+    ) -> List[VerificationSessionModel]:
+        """A tenant's sessions, newest first, optionally only those in one state."""
+        query = {"tenant_id": tenant_id, **({"status": status} if status else {})}
+        rows = await self.sessions_collection.find(query).sort("created_at", -1).limit(limit).to_list(limit)
         out = []
         for raw in rows:
             raw.pop("_id", None)

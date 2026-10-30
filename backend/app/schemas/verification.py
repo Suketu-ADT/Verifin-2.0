@@ -146,3 +146,17 @@ class BatchResponse(BaseModel):
     status_url: str
     items: List[BatchItemStatus]
     created_at: datetime
+
+
+class VerificationSummary(BaseModel):
+    """One row of the verification history."""
+
+    id: str
+    document_id: str
+    document_name: Optional[str] = None
+    statement_preview: str
+    status: str
+    risk_level: str
+    overall_score: float
+    claim_counts: Dict[str, int] = Field(default_factory=dict)
+    created_at: datetime
