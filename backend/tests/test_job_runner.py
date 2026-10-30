@@ -1,7 +1,7 @@
 """Background verification jobs: queueing, lifecycle, failure handling, backpressure, recovery."""
 
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -16,6 +16,8 @@ from app.repositories.verification_repository import VerificationRepository
 from app.schemas.verification import StartVerificationRequest, VerificationResultResponse
 from app.services import job_runner as job_module
 from app.services.job_runner import JobRunner, QueueFull
+from app.services.nli_service import ClaimNLIResult
+from app.services.verification_service import VerificationService
 
 V1 = "/api/v1"
 
@@ -229,3 +231,25 @@ async def test_status_of_another_tenants_job_is_404(client, monkeypatch):
     reg = await client.post(f"{V1}/auth/register", json={"email": "t@example.com", "password": "correct-horse-battery", "name": "T"})
     headers = {"Authorization": f"Bearer {reg.json()['access_token']}"}
     assert (await client.get(f"{V1}/verification/theirs/status", headers=headers)).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_completed_session_keeps_the_time_it_was_queued():
+    from datetime import datetime, timedelta, timezone
+
+    queued_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+    await VerificationRepository().create_session(
+        VerificationSessionModel(id="s-old", document_id="doc-1", llm_output="x", status="queued", created_at=queued_at)
+    )
+    await DocumentRepository().create_document(DocumentModel(id="doc-1", filename="r.pdf", size=1, file_path="x"))
+    service = VerificationService()
+    service.claim_extractor = MagicMock(extract_claims=MagicMock(return_value=[]))
+    service.retrieval_service = MagicMock(retrieve_evidence=AsyncMock(return_value=[]))
+    service.nli_service = MagicMock(evaluate_claim_against_evidence=MagicMock(return_value=ClaimNLIResult(
+        claim_text="Revenue was $5 billion.", claim_type="numerical", verdict="UNVERIFIED", confidence=0.0,
+        risk_level="MEDIUM", risk_score=0.5, explanation="no evidence")))
+    await service.start_verification_session(
+        StartVerificationRequest(document_id="doc-1", llm_output="Revenue was $5 billion."), session_id="s-old"
+    )
+    stored = await VerificationRepository().get_session_by_id("s-old")
+    assert stored.status == "completed" and stored.created_at == queued_at

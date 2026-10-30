@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from "framer-motion"
 import { ShieldCheck, FileSearch, Cpu, ArrowLeft, Loader2, CheckCircle2, Eye, EyeOff } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
-import { Badge } from "../components/ui/badge"
+import { useAuth } from "../lib/AuthContext"
+import { errorMessage } from "../lib/api"
 
 export default function Auth() {
   const navigate = useNavigate()
@@ -30,26 +31,50 @@ export default function Auth() {
   const [showSignupPassword, setShowSignupPassword] = useState(false)
   
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { login, register, user } = useAuth()
+  const destination = (location.state as { from?: string } | null)?.from ?? "/dashboard"
+
+  // already signed in: nothing to do here
+  useEffect(() => {
+    if (user) navigate(destination, { replace: true })
+  }, [user, destination, navigate])
 
   const rules = {
-    length: signupPassword.length >= 8,
+    length: signupPassword.length >= 10,
     number: /\d/.test(signupPassword),
     upperLower: /[a-z]/.test(signupPassword) && /[A-Z]/.test(signupPassword),
   }
   const allRulesPassed = rules.length && rules.number && rules.upperLower
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!loginEmail || !loginPassword) return
     setIsLoading(true)
-    setTimeout(() => navigate("/dashboard"), 700)
+    setError(null)
+    try {
+      await login(loginEmail.trim(), loginPassword)
+      navigate(destination, { replace: true })
+    } catch (err) {
+      setError(errorMessage(err, "Could not sign in. Check your connection and try again."))
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!signupName || !signupEmail || !signupPassword || !signupConfirm || !allRulesPassed || signupPassword !== signupConfirm) return
     setIsLoading(true)
-    setTimeout(() => navigate("/dashboard"), 700)
+    setError(null)
+    try {
+      await register(signupEmail.trim(), signupPassword, signupName.trim())
+      navigate("/dashboard", { replace: true })
+    } catch (err) {
+      setError(errorMessage(err, "Could not create the account. Check your connection and try again."))
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const CheckIcon = ({ passed }: { passed: boolean }) => (
@@ -82,6 +107,7 @@ export default function Auth() {
 
   const toggleMode = (mode: "login" | "signup") => {
     setIsLogin(mode === "login")
+    setError(null)
     // Optionally update the URL without full reload
     window.history.pushState(null, "", `/${mode}`)
   }
@@ -100,9 +126,6 @@ export default function Auth() {
             <Link to="/" className="inline-flex items-center text-xs font-medium text-slate-400 hover:text-white transition-colors">
               <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back to home
             </Link>
-            <Badge variant="outline" className="text-[10px] uppercase font-bold text-amber-300 border-amber-400/30 bg-amber-500/10 py-0.5 px-2">
-              Demo Mode
-            </Badge>
           </div>
           
           {/* Slider Toggle */}
@@ -143,7 +166,7 @@ export default function Auth() {
                 >
                   <h1 className="text-2xl font-bold tracking-tight mb-2">Welcome Back</h1>
                   <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-                    Demo prototype — this starts a local session only.
+                    Sign in to your organisation's workspace.
                   </p>
                   
                   <form onSubmit={handleLoginSubmit} className="space-y-4">
@@ -180,6 +203,7 @@ export default function Auth() {
                       </a>
                     </div>
                     
+                    {error && <p role="alert" className="text-xs text-rose-400 mt-4">{error}</p>}
                     <Button type="submit" disabled={isLoading} className="w-full h-11 text-sm font-bold mt-6 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border-none shadow-lg shadow-amber-500/20">
                       {isLoading ? <Loader2 className="h-5 w-5 animate-spin text-black/70" /> : "Sign In"}
                     </Button>
@@ -195,7 +219,7 @@ export default function Auth() {
                 >
                   <h1 className="text-2xl font-bold tracking-tight mb-2">Create Account</h1>
                   <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-                    Demo prototype — no real account is created.
+                    Creates a new organisation with you as its administrator.
                   </p>
                   
                   <form onSubmit={handleSignupSubmit} className="space-y-4">
@@ -245,7 +269,7 @@ export default function Auth() {
                     
                     <div className="space-y-1.5 py-1">
                       <div className={`flex items-center gap-2 text-xs ${rules.length ? "text-emerald-400/90" : "text-slate-400"}`}>
-                        <CheckIcon passed={rules.length} /> At least 8 characters
+                        <CheckIcon passed={rules.length} /> At least 10 characters
                       </div>
                       <div className={`flex items-center gap-2 text-xs ${rules.number ? "text-emerald-400/90" : "text-slate-400"}`}>
                         <CheckIcon passed={rules.number} /> Contains a number
@@ -270,6 +294,7 @@ export default function Auth() {
                       )}
                     </div>
                     
+                    {error && <p role="alert" className="text-xs text-rose-400 mt-4">{error}</p>}
                     <Button type="submit" disabled={isLoading || !allRulesPassed || (signupPassword !== signupConfirm && signupConfirm.length > 0)} className="w-full h-11 text-sm font-bold mt-6 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border-none shadow-lg shadow-amber-500/20">
                       {isLoading ? <Loader2 className="h-5 w-5 animate-spin text-black/70" /> : "Create Account"}
                     </Button>

@@ -1,7 +1,6 @@
 """SEC EDGAR import: HTML conversion, request hygiene, SSRF guards, and the import endpoints (no live network)."""
 
 import io
-import json
 from unittest.mock import MagicMock
 
 import httpx

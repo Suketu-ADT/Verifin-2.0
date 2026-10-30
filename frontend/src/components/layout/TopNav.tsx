@@ -1,5 +1,7 @@
 import { Bell, Search, User, Menu, Cpu, Sparkles, Command } from "lucide-react"
-import { useLocation } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
+import { LogOut } from "lucide-react"
+import { useAuth } from "../../lib/AuthContext"
 
 interface TopNavProps {
   onMenuClick: () => void
@@ -7,6 +9,8 @@ interface TopNavProps {
 
 export default function TopNav({ onMenuClick }: TopNavProps) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, authDisabled, logout } = useAuth()
   const path = location.pathname
 
   const getBreadcrumb = () => {
@@ -18,6 +22,7 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
     if (path.startsWith("/reports")) return "Audit Reports"
     if (path.startsWith("/system")) return "System Infrastructure"
     if (path.startsWith("/settings")) return "Configuration"
+    if (path.startsWith("/admin")) return "Administration"
     return "Intelligence Overview"
   }
 
@@ -72,9 +77,25 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
 
           {/* User profile */}
           <div className="flex items-center gap-2 pl-1 border-l border-white/10">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-amber-400/20 to-indigo-500/20 border border-white/15 flex items-center justify-center cursor-pointer hover:border-amber-400/40 transition-all">
+            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-amber-400/20 to-indigo-500/20 border border-white/15 flex items-center justify-center">
               <User className="h-4 w-4 text-amber-300" />
             </div>
+            {user && (
+              <div className="hidden md:block leading-tight max-w-[10rem]">
+                <div className="truncate text-xs font-semibold text-white">{authDisabled ? "Local mode" : user.name || user.email}</div>
+                <div className="text-[10px] uppercase tracking-wide text-slate-400">{authDisabled ? "auth off" : user.role}</div>
+              </div>
+            )}
+            {user && !authDisabled && (
+              <button
+                onClick={() => { logout(); navigate("/login") }}
+                className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-full transition-colors"
+                title="Sign out"
+                aria-label="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
       </header>

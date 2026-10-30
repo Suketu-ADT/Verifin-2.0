@@ -541,6 +541,9 @@ class VerificationService:
 
         try:
             if queued:
+                earlier = await self.verification_repo.get_session_by_id(session_id)
+                if earlier is not None:
+                    session.created_at = earlier.created_at  # keep the time the job was queued
                 await self.verification_repo.update_session(session)
             else:
                 await self.verification_repo.create_session(session)

@@ -2,8 +2,9 @@ import { motion } from "framer-motion"
 import { Link, useLocation } from "react-router-dom"
 import { 
   FileSearch, History, Search, Activity, Settings, FileText,
-  LayoutDashboard, X, ShieldCheck, Shield, Sparkles, Layers,
+  LayoutDashboard, X, ShieldCheck, Shield, Sparkles, Layers, UserCog,
 } from "lucide-react"
+import { useAuth } from "../../lib/AuthContext"
 
 interface SidebarProps {
   isOpen: boolean
@@ -12,16 +13,18 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const location = useLocation()
+  const { user } = useAuth()
 
   const navItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "New Verification", href: "/verify", icon: FileSearch, badge: "Hybrid RAG", badgeColor: "bg-indigo-500/15 text-indigo-300 border-indigo-400/30" },
-    { name: "Review Queue", href: "/review", icon: ShieldCheck, badge: "2", badgeColor: "bg-amber-500/15 text-amber-300 border-amber-400/30" },
+    { name: "Review Queue", href: "/review", icon: ShieldCheck },
     { name: "Evidence Explorer", href: "/evidence", icon: Search },
     { name: "History", href: "/history", icon: History },
     { name: "Reports", href: "/reports", icon: FileText },
     { name: "System Status", href: "/system", icon: Activity },
     { name: "Settings", href: "/settings", icon: Settings },
+    ...(user?.role === "admin" ? [{ name: "Administration", href: "/admin", icon: UserCog }] : []),
   ]
 
   return (

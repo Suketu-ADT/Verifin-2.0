@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearToken, getToken, type AuthUser } from './auth';
 
 // ---------------------------------------------------------------------------
 // Base URL — configurable via environment variable
@@ -10,6 +11,29 @@ const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
 });
+
+// Every request carries the signed-in user's token.
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) config.headers.set('Authorization', `Bearer ${token}`);
+  return config;
+});
+
+// An expired or revoked session sends the user back to the login page. The calls that are *meant* to
+// answer 401 (login, registration, the initial "who am I") handle it themselves.
+const SELF_HANDLED_401 = ['/auth/login', '/auth/register', '/auth/me'];
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const url: string = error?.config?.url ?? '';
+    const publicPage = ['/', '/login', '/signup'].includes(window.location.pathname);
+    if (error?.response?.status === 401 && !SELF_HANDLED_401.some((p) => url.includes(p)) && !publicPage) {
+      clearToken();
+      window.location.assign('/login');
+    }
+    return Promise.reject(error);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // TypeScript interfaces — mirror backend schemas exactly
@@ -135,7 +159,7 @@ export async function uploadDocument(
   formData.append('file', file);
 
   const response = await api.post<DocumentResponse>(
-    '/api/documents/upload',
+    '/api/v1/documents/upload',
     formData,
     {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -153,7 +177,7 @@ export async function uploadDocument(
  * Fetch metadata for an uploaded document.
  */
 export async function getDocument(documentId: string): Promise<DocumentResponse> {
-  const response = await api.get<DocumentResponse>(`/api/documents/${documentId}`);
+  const response = await api.get<DocumentResponse>(`/api/v1/documents/${documentId}`);
   return response.data;
 }
 
@@ -161,7 +185,7 @@ export async function getDocument(documentId: string): Promise<DocumentResponse>
  * URL for retrieving the raw PDF document for in-browser PDF viewing.
  */
 export function getDocumentFileUrl(documentId: string): string {
-  return `${API_BASE_URL}/api/documents/${documentId}/file`;
+  return `${API_BASE_URL}/api/v1/documents/${documentId}/file`;
 }
 
 /**
@@ -178,7 +202,7 @@ export async function startVerification(
     payload.retrieval_mode = retrievalMode;
   }
   const response = await api.post<VerificationResultResponse>(
-    '/api/verification/start',
+    '/api/v1/verification/start',
     payload,
   );
   return response.data;
@@ -191,7 +215,7 @@ export async function getVerificationResults(
   verificationId: string,
 ): Promise<VerificationResultResponse> {
   const response = await api.get<VerificationResultResponse>(
-    `/api/verification/${verificationId}/results`,
+    `/api/v1/verification/${verificationId}/results`,
   );
   return response.data;
 }
@@ -200,7 +224,7 @@ export async function getVerificationResults(
  * Run the built-in demo verification with canned data.
  */
 export async function runDemo(): Promise<DemoRunResponse> {
-  const response = await api.post<DemoRunResponse>('/api/demo/run');
+  const response = await api.post<DemoRunResponse>('/api/v1/demo/run');
   return response.data;
 }
 
@@ -208,7 +232,7 @@ export async function runDemo(): Promise<DemoRunResponse> {
  * Check system health (backend, database, embedding model, NLI model).
  */
 export async function getSystemHealth(): Promise<HealthResponse> {
-  const response = await api.get<HealthResponse>('/api/system/health');
+  const response = await api.get<HealthResponse>('/api/v1/system/health');
   return response.data;
 }
 
@@ -287,7 +311,7 @@ export function nliColor(label: string): {
  * Fetch all extracted text chunks and OCR metadata for a document.
  */
 export async function getDocumentChunks(documentId: string): Promise<any> {
-  const response = await api.get(`/api/documents/${documentId}/chunks`);
+  const response = await api.get(`/api/v1/documents/${documentId}/chunks`);
   return response.data;
 }
 
@@ -295,7 +319,7 @@ export async function getDocumentChunks(documentId: string): Promise<any> {
  * Fetch all structured financial tables extracted from a document.
  */
 export async function getDocumentTables(documentId: string): Promise<any> {
-  const response = await api.get(`/api/documents/${documentId}/tables`);
+  const response = await api.get(`/api/v1/documents/${documentId}/tables`);
   return response.data;
 }
 
@@ -359,7 +383,7 @@ export async function getReviewQueue(
   const params: Record<string, string> = {};
   if (documentId) params.document_id = documentId;
   if (userId) params.user_id = userId;
-  const response = await api.get<ReviewItem[]>('/api/review/queue', { params });
+  const response = await api.get<ReviewItem[]>('/api/v1/review/queue', { params });
   return response.data;
 }
 
@@ -374,7 +398,7 @@ export async function submitReviewDecision(
   const params: Record<string, string> = {};
   if (userId) params.user_id = userId;
   const response = await api.post<ReviewItem>(
-    `/api/review/${itemId}/decide`,
+    `/api/v1/review/${itemId}/decide`,
     decision,
     { params },
   );
@@ -388,7 +412,7 @@ export async function getReviewAuditTrail(
   itemId: string,
 ): Promise<ReviewAuditRecord[]> {
   const response = await api.get<ReviewAuditRecord[]>(
-    `/api/review/${itemId}/audit`,
+    `/api/v1/review/${itemId}/audit`,
   );
   return response.data;
 }
@@ -397,7 +421,7 @@ export async function getReviewAuditTrail(
  * Fetch safe LLM readiness and configuration status.
  */
 export async function getLlmHealth(): Promise<any> {
-  const response = await api.get('/api/system/llm/health');
+  const response = await api.get('/api/v1/system/llm/health');
   return response.data;
 }
 
@@ -426,7 +450,168 @@ export async function extractFactsFromDocument(
   documentId: string
 ): Promise<DocumentExtractFactsResponse> {
   const response = await api.post<DocumentExtractFactsResponse>(
-    `/api/documents/${documentId}/extract-facts`
+    `/api/v1/documents/${documentId}/extract-facts`
   );
   return response.data;
+}
+
+
+// ---------------------------------------------------------------------------
+// Authentication
+// ---------------------------------------------------------------------------
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user: AuthUser;
+}
+
+/** The message the backend gave for a failed call, or a fallback. */
+export function errorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  const detail = (error as any)?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail) && detail[0]?.msg) return String(detail[0].msg);
+  return fallback;
+}
+
+export async function loginRequest(email: string, password: string): Promise<TokenResponse> {
+  return (await api.post<TokenResponse>('/api/v1/auth/login', { email, password })).data;
+}
+
+export async function registerRequest(email: string, password: string, name: string): Promise<TokenResponse> {
+  return (await api.post<TokenResponse>('/api/v1/auth/register', { email, password, name })).data;
+}
+
+export async function fetchCurrentUser(): Promise<AuthUser> {
+  return (await api.get<AuthUser>('/api/v1/auth/me')).data;
+}
+
+/** The raw PDF as bytes, fetched with the user's credentials (a plain URL cannot carry them). */
+export async function fetchDocumentFile(documentId: string): Promise<Uint8Array> {
+  const response = await api.get<ArrayBuffer>(`/api/v1/documents/${documentId}/file`, { responseType: 'arraybuffer' });
+  return new Uint8Array(response.data);
+}
+
+/** Downloads a finished verification as a PDF report or a CSV of its claims. */
+export async function downloadReport(verificationId: string, format: 'pdf' | 'csv'): Promise<void> {
+  const response = await api.get<Blob>(`/api/v1/verification/${verificationId}/export`, {
+    params: { format },
+    responseType: 'blob',
+  });
+  const url = URL.createObjectURL(response.data);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `verifin-report-${verificationId.slice(0, 8)}.${format}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// Administration
+// ---------------------------------------------------------------------------
+
+export interface AdminOverview {
+  usage: {
+    window_days: number;
+    verifications: number;
+    by_status: Record<string, number>;
+    by_risk: Record<string, number>;
+    average_score: number | null;
+    documents: number;
+  };
+  people: {
+    users: number;
+    active_users: number;
+    by_role: Record<string, number>;
+    api_keys_active: number;
+    api_keys_total: number;
+    last_login_at: string | null;
+  };
+  audit: { events: number; chain_valid: boolean; head_hash: string; first_broken_seq: number | null };
+  instance: {
+    app_version: string;
+    pipeline_version: string;
+    environment: string;
+    auth_enabled: boolean;
+    jobs_running: number;
+    jobs_waiting: number;
+    max_concurrent_jobs: number;
+    job_queue_limit: number;
+    models: Record<string, string | null>;
+  };
+}
+
+export interface ApiKeyInfo {
+  id: string;
+  name: string;
+  prefix: string;
+  role: string;
+  is_active: boolean;
+  expires_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface AuditEvent {
+  id: string;
+  seq: number;
+  timestamp: string;
+  actor_id: string;
+  actor_email: string | null;
+  actor_role: string | null;
+  auth_method: string | null;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  outcome: string;
+  request_id: string | null;
+  details: Record<string, unknown>;
+  hash: string;
+}
+
+export interface AuditChainStatus {
+  valid: boolean;
+  events: number;
+  head_hash: string;
+  first_broken_seq: number | null;
+  reason: string | null;
+}
+
+export async function getAdminOverview(): Promise<AdminOverview> {
+  return (await api.get<AdminOverview>('/api/v1/admin/overview')).data;
+}
+
+export async function listUsers(): Promise<AuthUser[]> {
+  return (await api.get<AuthUser[]>('/api/v1/auth/users')).data;
+}
+
+export async function createUser(email: string, password: string, role: string, name?: string): Promise<AuthUser> {
+  return (await api.post<AuthUser>('/api/v1/auth/users', { email, password, role, name })).data;
+}
+
+export async function updateUser(id: string, fields: { role?: string; is_active?: boolean }): Promise<AuthUser> {
+  return (await api.patch<AuthUser>(`/api/v1/auth/users/${id}`, fields)).data;
+}
+
+export async function listApiKeys(): Promise<ApiKeyInfo[]> {
+  return (await api.get<ApiKeyInfo[]>('/api/v1/auth/api-keys')).data;
+}
+
+export async function createApiKey(name: string, role: string, expiresInDays?: number): Promise<ApiKeyInfo & { key: string }> {
+  return (await api.post('/api/v1/auth/api-keys', { name, role, expires_in_days: expiresInDays })).data;
+}
+
+export async function revokeApiKey(id: string): Promise<void> {
+  await api.delete(`/api/v1/auth/api-keys/${id}`);
+}
+
+export async function listAuditEvents(params: { action?: string; limit?: number; before_seq?: number }): Promise<AuditEvent[]> {
+  return (await api.get<AuditEvent[]>('/api/v1/audit/events', { params })).data;
+}
+
+export async function verifyAuditChain(): Promise<AuditChainStatus> {
+  return (await api.get<AuditChainStatus>('/api/v1/audit/verify')).data;
 }

@@ -12,15 +12,19 @@ import Settings from "./pages/Settings"
 import SystemStatus from "./pages/SystemStatus"
 import ReviewQueue from "./pages/ReviewQueue"
 import Auth from "./pages/Auth"
+import Admin from "./pages/Admin"
+import { AuthProvider, RequireAuth, RequireRole } from "./lib/AuthContext"
 
 function App() {
   return (
     <Router>
+      <AuthProvider>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Auth />} />
         <Route path="/signup" element={<Auth />} />
         
+        <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/verify" element={<VerificationFlow />} />
@@ -32,8 +36,11 @@ function App() {
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/system" element={<SystemStatus />} />
+          <Route path="/admin" element={<RequireRole minimum="admin"><Admin /></RequireRole>} />
+        </Route>
         </Route>
       </Routes>
+      </AuthProvider>
     </Router>
   )
 }

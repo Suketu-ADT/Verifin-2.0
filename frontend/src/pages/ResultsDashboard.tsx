@@ -26,6 +26,8 @@ import { demoSessions, claimCounts, type NLILabel } from "../lib/demoData"
 import {
   getVerificationResults,
   getDocument,
+  downloadReport,
+  errorMessage,
   type VerificationResultResponse,
   type DocumentResponse,
 } from "../lib/api"
@@ -51,6 +53,21 @@ export default function ResultsDashboard() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState<"ALL" | "CONTRADICTED" | "SUPPORTED" | "UNVERIFIABLE">("ALL")
   const [copiedId, setCopiedId] = useState(false)
+  const [exporting, setExporting] = useState<"pdf" | "csv" | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  const exportReport = async (format: "pdf" | "csv") => {
+    if (!liveSession) return
+    setExporting(format)
+    setExportError(null)
+    try {
+      await downloadReport(liveSession.id, format)
+    } catch (err) {
+      setExportError(errorMessage(err, "The report could not be downloaded."))
+    } finally {
+      setExporting(null)
+    }
+  }
 
   useEffect(() => {
     if (demoSession || !id) return
@@ -343,6 +360,13 @@ export default function ResultsDashboard() {
             <Button variant="outline" size="sm" onClick={() => window.print()} className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
               <Download className="h-3.5 w-3.5" /> Print Audit
             </Button>
+            <Button variant="outline" size="sm" disabled={exporting !== null} onClick={() => exportReport("pdf")} className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
+              <Download className="h-3.5 w-3.5 text-amber-400" /> {exporting === "pdf" ? "Preparing…" : "PDF report"}
+            </Button>
+            <Button variant="outline" size="sm" disabled={exporting !== null} onClick={() => exportReport("csv")} className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
+              <Download className="h-3.5 w-3.5 text-amber-400" /> {exporting === "csv" ? "Preparing…" : "CSV"}
+            </Button>
+            {exportError && <span role="alert" className="text-xs text-rose-400">{exportError}</span>}
           </div>
         </div>
 

@@ -18,7 +18,7 @@ import {
   Layers,
   CheckCircle2,
 } from "lucide-react"
-import { getDocumentFileUrl, type BoundingBox } from "../lib/api"
+import { fetchDocumentFile, type BoundingBox } from "../lib/api"
 
 // Configure PDF.js worker
 if (typeof window !== "undefined" && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
@@ -94,20 +94,20 @@ export function PdfEvidenceViewer({
     height: 0,
   })
 
-  const pdfUrl = getDocumentFileUrl(documentId)
-
   // 1. Load PDF document
   useEffect(() => {
     let isCancelled = false
     setLoading(true)
     setError(null)
 
-    const loadingTask = pdfjsLib.getDocument({
-      url: pdfUrl,
-      withCredentials: false,
-    })
-
-    loadingTask.promise
+    // the file is fetched with the user's token, then handed to PDF.js as bytes
+    let task: ReturnType<typeof pdfjsLib.getDocument> | null = null
+    void fetchDocumentFile(documentId)
+      .then((data) => {
+        if (isCancelled) throw new Error("cancelled")
+        task = pdfjsLib.getDocument({ data })
+        return task.promise
+      })
       .then((doc) => {
         if (!isCancelled) {
           setPdfDoc(doc)
@@ -131,10 +131,22 @@ export function PdfEvidenceViewer({
     return () => {
       isCancelled = true
       try {
-        loadingTask.destroy()
+        void task?.destroy()
       } catch {}
     }
-  }, [pdfUrl, documentId])
+  }, [documentId])
+
+  // The raw file needs the user's token, so "open in a new tab" fetches it first and opens a temporary local URL.
+  const openRawPdf = async (page?: number) => {
+    try {
+      const data = await fetchDocumentFile(documentId)
+      const url = URL.createObjectURL(new Blob([data as BlobPart], { type: "application/pdf" }))
+      window.open(page ? `${url}#page=${page}` : url, "_blank", "noopener")
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      setError("The source PDF could not be opened.")
+    }
+  }
 
   // Sync initialPage when prop updates
   useEffect(() => {
@@ -469,15 +481,14 @@ export function PdfEvidenceViewer({
 
           <div className="w-px h-4 bg-white/10 mx-1" />
 
-          <a
-            href={`${pdfUrl}#page=${currentPage}`}
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
+            onClick={() => openRawPdf(currentPage)}
             className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white px-2 py-1 rounded border border-white/10 hover:border-white/20 transition-colors"
             title="Open raw PDF file in new browser window"
           >
             Tab <ExternalLink className="h-3 w-3" />
-          </a>
+          </button>
         </div>
       </div>
 
@@ -528,14 +539,13 @@ export function PdfEvidenceViewer({
           <div className="text-center space-y-3 p-6 max-w-sm">
             <AlertCircle className="h-8 w-8 text-rose-400 mx-auto" />
             <p className="text-xs text-slate-300">{error}</p>
-            <a
-              href={pdfUrl}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              type="button"
+              onClick={() => openRawPdf()}
               className="inline-flex items-center gap-1 text-xs text-amber-300 hover:text-amber-200"
             >
               Open PDF directly <ExternalLink className="h-3 w-3" />
-            </a>
+            </button>
           </div>
         )}
 
