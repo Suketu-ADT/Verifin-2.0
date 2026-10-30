@@ -133,9 +133,9 @@ Entity novelty, figure conflict, grounded support and the period check each make
 | v0 VERIFIN | 42.7 | 29.4 [25.7, 32.9] | worse than the heuristic |
 | **v4 VERIFIN** | **96.3** | **96.7 [94.5, 98.3]** | |
 | LLM judge, no retrieval (Qwen 2.5 7B) | 19.5 | 13.7 [10.6, 17.0] | answers UNVERIFIABLE for 334 of 354 claims |
-| LLM judge with retrieved evidence (Qwen 2.5 7B) | *not yet run* | *not yet run* | |
+| LLM judge with VERIFIN's retrieved evidence (Qwen 2.5 7B) | 84.2 | 82.9 [78.7, 86.8] | p < 0.001 against v4; 14.2 s per claim on CPU against 1.0 s |
 
-A simple number-matching heuristic reaches 74.5 macro-F1 on this dataset because numeric edits are the dominant contradiction type. This is stated openly so the jury does not read the gap to v4 as proof against all baselines. The LLM-judge baselines are the comparison that matters and are still to be run.
+A simple number-matching heuristic reaches 74.5 macro-F1 on this dataset because numeric edits are the dominant contradiction type. This is stated openly so the jury does not read the gap to v4 as proof against all baselines. The LLM-judge baselines are the comparison that matters: given the same retrieved evidence, a 7B instruction-tuned model reaches 82.9 macro-F1 against 96.7 for VERIFIN (McNemar p < 0.001), at fourteen times the latency.
 
 ### NLI model size (dev split)
 
@@ -164,7 +164,7 @@ Most results above pass each claim to the pipeline as-is. With the production cl
 
 ### LLM-judge baseline without evidence (dev split)
 
-Qwen 2.5 7B asked to judge a claim about a named company report without seeing the report scores **13.7 macro-F1** (accuracy 19.5%). It answers UNVERIFIABLE for 334 of 354 claims, because it cannot know the report's figures. This shows that an LLM alone cannot verify claims against a document; it is not a strong baseline. The comparison with evidence supplied is reported below when available.
+Qwen 2.5 7B asked to judge a claim about a named company report without seeing the report scores **13.7 macro-F1** (accuracy 19.5%). It answers UNVERIFIABLE for 334 of 354 claims, because it cannot know the report's figures. This shows that an LLM alone cannot verify claims against a document; it is not a strong baseline. With VERIFIN's retrieved evidence supplied, the same model reaches **82.9 macro-F1** (accuracy 84.2%, CI 78.7-86.8). It handles direction flips (91.3%), number changes (82.0%) and supported claims (about 91%) reasonably, but misses most **period swaps (38.9%)** and **unit swaps (15.8%)**: the deterministic period and unit checks are what close that gap. Its any-unsupported flagging reaches precision 90.8% and recall 87.3% (false-positive rate 9.2%). Retrieval for this run was page Recall@3 96.6%, MRR 0.900. The judge was run once per claim at temperature 0 with no prompt tuning, so a stronger model or a tuned prompt would score higher; the result characterises a small local model, not LLM judging in general.
 
 ### Retrieval comparison (original system, dev split)
 
