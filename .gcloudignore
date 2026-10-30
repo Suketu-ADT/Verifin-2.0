@@ -1,0 +1,16 @@
+# Cloud Build uploads the repository as the build context. Send only what backend/Dockerfile copies.
+*
+!backend/
+backend/**/__pycache__/
+backend/.venv/
+backend/.env
+backend/storage/
+backend/tests/
+backend/eval/
+!backend/requirements.txt
+!backend/requirements.lock.txt
+!backend/Dockerfile
+!data/
+data/*
+!data/demo/
+!deploy/

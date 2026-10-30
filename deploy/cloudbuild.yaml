@@ -1,0 +1,9 @@
+# Builds the API image from the repository root and pushes it to Artifact Registry.
+#   gcloud builds submit --config deploy/cloudbuild.yaml --substitutions=_IMAGE=REGION-docker.pkg.dev/PROJECT/verifin/api:TAG .
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "backend/Dockerfile", "-t", "${_IMAGE}", "."]
+images: ["${_IMAGE}"]
+timeout: 2400s
+substitutions:
+  _IMAGE: ""

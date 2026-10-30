@@ -17,7 +17,7 @@ import { AuthProvider, RequireAuth, RequireRole } from "./lib/AuthContext"
 
 function App() {
   return (
-    <Router>
+    <Router basename={(import.meta as any).env?.BASE_URL ?? "/"}>
       <AuthProvider>
       <Routes>
         <Route path="/" element={<LandingPage />} />
