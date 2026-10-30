@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     # ── Background jobs ──────────────────────────────────────────────────
     max_concurrent_jobs: int = 2  # verification jobs running at once per instance
     job_queue_limit: int = 50  # queued jobs per instance before new ones are refused
+    batch_max_items: int = 25  # statements accepted in one batch request
 
     # ── Data store ───────────────────────────────────────────────────────
     # Local development may fall back to an in-memory database when MongoDB is unreachable. Production never does:

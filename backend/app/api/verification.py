@@ -2,17 +2,30 @@
 Verification endpoints for initiating verification sessions and polling results.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, status
+import uuid
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
+from starlette.concurrency import run_in_threadpool
+from app.config import settings
+from app.models.batch import BatchItemModel, BatchModel
+from app.repositories.batch_repository import BatchRepository
+from app.repositories.verification_repository import VerificationRepository
 from app.schemas.verification import (
+    BatchItemStatus,
+    BatchRequest,
+    BatchResponse,
     StartVerificationRequest,
     VerificationJobResponse,
     VerificationResultResponse,
     VerificationStatusResponse,
 )
+from app.repositories.document_repository import DocumentRepository
 from app.security import Principal, require_role
 from app.security.access import authorize_document
 from app.security.rate_limit import limit_heavy
 from app.services.audit_service import audit
+from app.services.export_service import build_csv, build_pdf
 from app.services.job_runner import QueueFull, job_runner
 from app.services.verification_service import VerificationService
 
@@ -82,6 +95,97 @@ async def start_verification_job(
     )
 
 
+@router.post(
+    "/batches",
+    response_model=BatchResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(limit_heavy)],
+)
+async def start_verification_batch(
+    body: BatchRequest,
+    http_request: Request,
+    response: Response,
+    principal: Principal = Depends(require_role("analyst")),
+    service: VerificationService = Depends(get_verification_service),
+) -> BatchResponse:
+    """
+    Queues several statements at once, each as its own job. Meant for programmatic use with an API key.
+    The whole batch is checked first: one unknown document or empty statement rejects it and queues nothing.
+    """
+    if len(body.items) > settings.batch_max_items:
+        raise HTTPException(
+            status_code=413,
+            detail=f"A batch holds at most {settings.batch_max_items} items.",
+        )
+    for number, item in enumerate(body.items):
+        if not item.llm_output.strip():
+            raise HTTPException(status_code=422, detail=f"Item {number}: llm_output is empty.")
+        await authorize_document(item.document_id.strip(), principal)
+    if job_runner.waiting + len(body.items) > settings.job_queue_limit:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The verification queue cannot take this batch right now. Retry shortly.",
+            headers={"Retry-After": "30"},
+        )
+
+    items, requests = [], []
+    for number, item in enumerate(body.items):
+        request = StartVerificationRequest(document_id=item.document_id, llm_output=item.llm_output)
+        session = await service.create_queued_session(request, user_id=principal.user_id, tenant_id=principal.tenant_id)
+        items.append(BatchItemModel(index=number, document_id=session.document_id, session_id=session.id, reference=item.reference))
+        requests.append((session.id, request))
+    batch = await BatchRepository().create(
+        BatchModel(id=str(uuid.uuid4()), tenant_id=principal.tenant_id, user_id=principal.user_id, items=items)
+    )
+    for session_id, request in requests:
+        try:
+            job_runner.submit(session_id, request, principal.user_id, principal.tenant_id)
+        except QueueFull:  # raced with other callers between the check above and now
+            await service.verification_repo.set_status(session_id, "failed", "Rejected: the job queue is full.")
+    await audit.record_for(principal, "verification.batch", resource_type="batch", resource_id=batch.id,
+                           details={"items": len(items)})
+    base = str(http_request.url).rsplit("/batches", 1)[0]
+    response.headers["Location"] = f"{base}/batches/{batch.id}"
+    return await _batch_response(batch, base)
+
+
+@router.get("/batches/{batch_id}", response_model=BatchResponse)
+async def get_verification_batch(
+    batch_id: str,
+    http_request: Request,
+    principal: Principal = Depends(require_role("viewer")),
+) -> BatchResponse:
+    """Progress of every item in a batch, with each finished item's score and risk."""
+    batch = await BatchRepository().get(batch_id)
+    if batch is None or batch.tenant_id != principal.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Batch '{batch_id}' not found.")
+    base = str(http_request.url).rsplit("/batches", 1)[0]
+    return await _batch_response(batch, base)
+
+
+async def _batch_response(batch: BatchModel, base: str) -> BatchResponse:
+    repo = VerificationRepository()
+    statuses, counts = [], {"queued": 0, "running": 0, "completed": 0, "failed": 0}
+    for item in batch.items:
+        session = await repo.get_session_by_id(item.session_id)
+        state = session.status if session else "failed"
+        counts[state] = counts.get(state, 0) + 1
+        statuses.append(BatchItemStatus(
+            index=item.index, reference=item.reference, document_id=item.document_id, session_id=item.session_id,
+            status=state, error=session.error if session else "Session record is missing.",
+            overall_score=session.overall_score if session and state == "completed" else None,
+            risk_level=session.risk_level if session and state == "completed" else None,
+            results_url=f"{base}/{item.session_id}/results",
+        ))
+    done = counts["completed"] + counts["failed"]
+    if done < len(batch.items):
+        overall = "running" if counts["running"] or done else "queued"
+    else:
+        overall = "completed" if not counts["failed"] else "completed_with_failures"
+    return BatchResponse(id=batch.id, status=overall, total=len(batch.items), counts=counts,
+                         status_url=f"{base}/batches/{batch.id}", items=statuses, created_at=batch.created_at)
+
+
 @router.get("/{id}/status", response_model=VerificationStatusResponse)
 async def get_verification_status(
     id: str = Path(..., description="Verification session ID"),
@@ -106,3 +210,34 @@ async def get_verification_results(
     Retrieves verification results by session ID.
     """
     return await service.get_results(session_id=id, tenant_id=principal.tenant_id)
+
+
+@router.get("/{id}/export")
+async def export_verification(
+    id: str = Path(..., description="Verification session ID"),
+    format: Literal["csv", "pdf"] = Query("pdf", description="csv for analysis, pdf for filing"),
+    principal: Principal = Depends(require_role("viewer")),
+    service: VerificationService = Depends(get_verification_service),
+) -> Response:
+    """Downloads a finished verification as a PDF report or a CSV of its claims."""
+    result = await service.get_results(session_id=id, tenant_id=principal.tenant_id)
+    if result.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=f"Verification is {result.status}; nothing to export yet."
+        )
+    document = await DocumentRepository().get_document_by_id(result.document_id)
+    name = f"verifin-report-{id[:8]}"
+    if format == "csv":
+        body, media = build_csv(result).encode("utf-8-sig"), "text/csv; charset=utf-8"  # BOM: Excel reads UTF-8 correctly
+    else:
+        who = principal.email or principal.user_id
+        body = await run_in_threadpool(
+            build_pdf, result, document_name=document.filename if document else None, generated_by=who
+        )
+        media = "application/pdf"
+    await audit.record_for(principal, "verification.export", resource_type="verification", resource_id=id,
+                           details={"format": format, "bytes": len(body)})
+    return Response(
+        content=body, media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{name}.{format}"', "Cache-Control": "no-store"},
+    )

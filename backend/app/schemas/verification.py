@@ -110,3 +110,39 @@ class VerificationStatusResponse(BaseModel):
     error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+
+class BatchItemRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    document_id: str = Field(..., min_length=1)
+    llm_output: str = Field(..., min_length=1)
+    reference: Optional[str] = Field(None, max_length=120, description="Your own identifier, echoed back")
+
+
+class BatchRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    items: List[BatchItemRequest] = Field(..., min_length=1)
+
+
+class BatchItemStatus(BaseModel):
+    index: int
+    reference: Optional[str] = None
+    document_id: str
+    session_id: str
+    status: str
+    error: Optional[str] = None
+    overall_score: Optional[float] = None
+    risk_level: Optional[str] = None
+    results_url: str
+
+
+class BatchResponse(BaseModel):
+    id: str
+    status: str  # queued, running, completed, completed_with_failures
+    total: int
+    counts: Dict[str, int]
+    status_url: str
+    items: List[BatchItemStatus]
+    created_at: datetime
