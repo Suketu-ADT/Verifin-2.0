@@ -14,9 +14,9 @@ import { uploadDocument, startVerification, extractFactsFromDocument, formatByte
 
 const stages = [
   { icon: FileText, label: "Claim Decomposition" },
-  { icon: Search, label: "Evidence Retrieval" },
-  { icon: Cpu, label: "NLI Verification" },
-  { icon: Scale, label: "Consistency Checks" },
+  { icon: Search, label: "BM25 Hybrid Retrieval" },
+  { icon: Cpu, label: "DeBERTa-v3 NLI Verification" },
+  { icon: Scale, label: "Consistency & Multi-Hop Checks" },
 ]
 
 export default function VerificationFlow() {
@@ -24,6 +24,7 @@ export default function VerificationFlow() {
   const [fileName, setFileName] = useState<string | null>(null)
   const [answer, setAnswer] = useState("")
   const [selectedSample, setSelectedSample] = useState<string | null>(null)
+  const [retrievalMode, setRetrievalMode] = useState<string>("hybrid")
   
   // Real backend upload & verification state
   const [uploadedDoc, setUploadedDoc] = useState<DocumentResponse | null>(null)
@@ -134,7 +135,7 @@ export default function VerificationFlow() {
 
     setIsSubmitting(true)
     try {
-      const session = await startVerification(uploadedDoc.id, answer)
+      const session = await startVerification(uploadedDoc.id, answer, retrievalMode)
       setIsSubmitting(false)
       navigate(`/verify/results/${session.id}`)
     } catch (err: any) {
@@ -162,41 +163,49 @@ export default function VerificationFlow() {
       <div className="grid md:grid-cols-2 gap-6">
         {/* Left: document */}
         <motion.div variants={{ hidden: { opacity: 0, x: -20 }, show: { opacity: 1, x: 0 } }}>
-        <Card className="border-white/10 h-full">
-          <div className="p-5 border-b border-white/10 flex items-center gap-3 bg-white/[0.02] rounded-t-2xl">
-            <FileUp className="h-5 w-5 text-slate-700" />
-            <h2 className="text-base font-bold text-white">Step 1 · Source Document</h2>
+        <div className="glass-card rounded-2xl border border-white/10 h-full flex flex-col justify-between overflow-hidden">
+          <div className="p-5 border-b border-white/8 flex items-center gap-3 bg-black/20">
+            <div className="h-8 w-8 rounded-lg bg-amber-500/15 border border-amber-400/30 flex items-center justify-center text-amber-300">
+              <FileUp className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Step 1 · Source Filing Document</h2>
+              <div className="text-[11px] text-slate-400">Target PDF for fact verification & NLI premise</div>
+            </div>
           </div>
-          <CardContent className="p-6 space-y-4">
+          <div className="p-6 space-y-4 flex-1">
             {isUploading ? (
-              <div className="border border-white/10 rounded-xl glass-subtle p-8 flex flex-col items-center justify-center text-center space-y-3">
-                <Loader2 className="h-6 w-6 text-amber-400 animate-spin" />
-                <div className="text-sm font-semibold text-white">Uploading & verifying {fileName}...</div>
-                <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden max-w-xs">
-                  <div className="bg-amber-400 h-full transition-all duration-200" style={{ width: `${uploadProgress}%` }} />
+              <div className="border border-white/10 rounded-2xl glass-subtle p-8 flex flex-col items-center justify-center text-center space-y-3">
+                <Loader2 className="h-8 w-8 text-amber-400 animate-spin" />
+                <div className="text-sm font-bold text-white">Uploading & Indexing {fileName}...</div>
+                <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden max-w-xs border border-white/5">
+                  <div className="bg-gradient-to-r from-amber-400 to-amber-500 h-full transition-all duration-200" style={{ width: `${uploadProgress}%` }} />
                 </div>
-                <div className="text-xs text-slate-400">{uploadProgress}% complete</div>
+                <div className="text-xs font-mono text-slate-400">{uploadProgress}% complete</div>
               </div>
             ) : uploadError ? (
-              <div className="border border-rose-500/30 rounded-xl bg-rose-500/5 p-5 space-y-3">
+              <div className="border border-rose-500/30 rounded-2xl bg-rose-500/10 p-5 space-y-3">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="h-5 w-5 text-rose-400 shrink-0 mt-0.5" />
                   <div>
-                    <div className="text-sm font-semibold text-rose-300">Upload Failed</div>
+                    <div className="text-sm font-bold text-rose-300">Upload Failed</div>
                     <div className="text-xs text-rose-300/80 mt-1">{uploadError}</div>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={handleRemove} className="text-xs">
+                <Button variant="outline" size="sm" onClick={handleRemove} className="text-xs border-rose-400/30 text-rose-300 hover:bg-rose-500/20">
                   Try Again
                 </Button>
               </div>
             ) : !fileName ? (
-              <label className="border-2 border-dashed border-white/15 rounded-xl glass-subtle p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-white/[0.05] transition-colors">
-                <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-3">
-                  <ShieldCheck className="h-5 w-5 text-slate-400" />
+              <label className="border-2 border-dashed border-white/15 rounded-2xl glass-subtle p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-white/[0.04] hover:border-amber-400/40 transition-all group">
+                <div className="w-12 h-12 rounded-2xl bg-white/5 group-hover:bg-amber-500/10 border border-white/10 group-hover:border-amber-400/30 flex items-center justify-center mb-3 transition-all">
+                  <ShieldCheck className="h-6 w-6 text-slate-400 group-hover:text-amber-300 transition-colors" />
                 </div>
-                <p className="text-sm font-semibold text-slate-300 mb-1">Drop a financial document, or browse files</p>
-                <p className="text-[11px] text-slate-400">PDF · 10-K, 10-Q, earnings transcripts (max 25 MB)</p>
+                <p className="text-sm font-bold text-white mb-1">Upload SEC Filing PDF or Transcript</p>
+                <p className="text-xs text-slate-400 max-w-xs">Drag and drop or browse files (10-K, 10-Q, 8-K, up to 25 MB)</p>
+                <span className="mt-3 text-[11px] font-mono text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/20">
+                  Dual Indexing: Dense + BM25 Sparse
+                </span>
                 <input
                   type="file"
                   accept="application/pdf"
@@ -205,65 +214,73 @@ export default function VerificationFlow() {
                 />
               </label>
             ) : (
-              <div className="flex items-center justify-between glass-subtle border border-white/10 rounded-lg p-3.5">
+              <div className="flex items-center justify-between glass-subtle border border-white/10 rounded-xl p-4">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded glass-strong text-white flex items-center justify-center shrink-0">
-                    <FileText className="h-4 w-4" />
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-400/20 text-amber-300 flex items-center justify-center shrink-0">
+                    <FileText className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-white truncate">{fileName}</div>
+                    <div className="text-sm font-bold text-white truncate">{fileName}</div>
                     {uploadedDoc ? (
-                      <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 flex-wrap">
-                        <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Ready ({uploadedDoc.status})</span>
+                      <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 flex-wrap font-mono mt-0.5">
+                        <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Ready</span>
                         <span className="text-slate-500">·</span>
-                        <span className="text-slate-400">{formatBytes(uploadedDoc.size)}</span>
+                        <span className="text-slate-300">{formatBytes(uploadedDoc.size)}</span>
                         <span className="text-slate-500">·</span>
-                        <span className="text-slate-400">{uploadedDoc.page_count} page{uploadedDoc.page_count !== 1 ? 's' : ''}</span>
-                        <span className="font-mono text-[9px] bg-white/5 text-slate-300 px-1.5 py-0.5 rounded">ID: {uploadedDoc.id.slice(0, 8)}...</span>
+                        <span className="text-slate-300">{uploadedDoc.page_count} page{uploadedDoc.page_count !== 1 ? 's' : ''}</span>
                       </div>
                     ) : (
-                      <div className="text-[11px] text-amber-400 flex items-center gap-1">
-                        <Sparkles className="h-3 w-3" /> Sample Dataset
+                      <div className="text-[11px] text-amber-300 flex items-center gap-1 mt-0.5 font-mono">
+                        <Sparkles className="h-3 w-3" /> Pre-Indexed Demo Corpus
                       </div>
                     )}
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={handleRemove}>Remove</Button>
+                <Button variant="ghost" size="sm" onClick={handleRemove} className="text-xs text-slate-400 hover:text-white hover:bg-white/5">
+                  Change
+                </Button>
               </div>
             )}
 
             <div>
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Or try a sample</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Or select a pre-indexed sample session</div>
               <motion.div variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} initial="hidden" animate="show" className="flex flex-col gap-2">
                 {demoSessions.map((s) => (
                   <motion.button
                     variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }}
                     key={s.id}
                     onClick={() => loadSample(s.id)}
-                    className={`text-left text-xs font-medium px-3 py-2 rounded border transition-colors ${
+                    className={`text-left text-xs font-semibold px-3.5 py-2.5 rounded-xl border transition-all ${
                       selectedSample === s.id
-                        ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                        : "border-white/10 text-slate-400 hover:bg-white/[0.04]"
+                        ? "border-amber-400/40 bg-amber-500/15 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
+                        : "border-white/8 text-slate-300 hover:bg-white/5 hover:border-white/15"
                     }`}
                   >
-                    <Sparkles className="h-3 w-3 inline mr-1.5 -mt-0.5" /> {s.title}
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="h-3 w-3 text-amber-400" /> {s.title}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">{s.claims.length} claims</span>
+                    </div>
                   </motion.button>
                 ))}
               </motion.div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
         </motion.div>
 
         {/* Right: LLM answer */}
         <motion.div variants={{ hidden: { opacity: 0, x: 20 }, show: { opacity: 1, x: 0 } }}>
-        <Card className="border-white/10 h-full">
-          <div className="p-5 border-b border-white/10 flex items-center justify-between bg-white/[0.02] rounded-t-2xl">
+        <div className="glass-card rounded-2xl border border-white/10 h-full flex flex-col justify-between overflow-hidden">
+          <div className="p-5 border-b border-white/8 flex items-center justify-between bg-black/20">
             <div className="flex items-center gap-3">
-              <Sparkles className="h-5 w-5 text-amber-400" />
+              <div className="h-8 w-8 rounded-lg bg-indigo-500/15 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
+                <Sparkles className="h-4 w-4" />
+              </div>
               <div>
-                <h2 className="text-base font-bold text-white">Step 2 · LLM Facts & Statements</h2>
-                <div className="text-[11px] text-slate-400">Extract propositions to test for hallucinations</div>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Step 2 · LLM Claims & Statements</h2>
+                <div className="text-[11px] text-slate-400">Financial propositions to verify for hallucinations</div>
               </div>
             </div>
             {uploadedDoc && (
@@ -272,7 +289,7 @@ export default function VerificationFlow() {
                 size="sm"
                 onClick={() => handleExtractFacts()}
                 disabled={isExtracting || isUploading}
-                className="text-xs border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 shrink-0"
+                className="text-xs border-amber-400/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 shrink-0 font-semibold"
               >
                 {isExtracting ? (
                   <>
@@ -280,19 +297,19 @@ export default function VerificationFlow() {
                   </>
                 ) : (
                   <>
-                    <Sparkles className="h-3.5 w-3.5 mr-1.5 text-amber-400" /> {answer ? "Re-Extract with LLM" : "Extract Facts with LLM"}
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5 text-amber-400" /> {answer ? "Re-Extract" : "Extract with LLM"}
                   </>
                 )}
               </Button>
             )}
           </div>
-          <CardContent className="p-6 space-y-4">
+          <div className="p-6 space-y-4 flex-1">
             {isExtracting && (
               <div className="border border-amber-500/30 rounded-xl bg-amber-500/10 p-4 flex items-center gap-3 text-xs text-amber-300 animate-pulse">
                 <Loader2 className="h-5 w-5 animate-spin text-amber-400 shrink-0" />
                 <div>
-                  <div className="font-semibold text-amber-200">LLM is reading document and extracting facts...</div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">Synthesizing revenue, income, margins, and key financial propositions</div>
+                  <div className="font-bold text-amber-200">LLM is parsing document and decomposing facts...</div>
+                  <div className="text-[11px] text-slate-300 mt-0.5">Synthesizing revenue, income, margins, and key financial propositions</div>
                 </div>
               </div>
             )}
@@ -310,42 +327,71 @@ export default function VerificationFlow() {
             )}
 
             {extractedCount !== null && !isExtracting && (
-              <div className="flex items-center justify-between text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3.5 py-2">
-                <span className="flex items-center gap-1.5 font-medium">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> Extracted {extractedCount} statements from document
+              <div className="flex items-center justify-between text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3.5 py-2.5">
+                <span className="flex items-center gap-1.5 font-bold">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400" /> Extracted {extractedCount} financial propositions
                 </span>
-                <span className="text-[10px] text-slate-400">Review or customize statements below</span>
+                <span className="text-[10px] text-slate-400 font-mono">Ready to verify</span>
               </div>
             )}
 
             <Textarea
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
-              placeholder="Your LLM will generate financial statements here, or you can paste claims directly..."
-              className="min-h-[170px] text-sm font-sans leading-relaxed bg-transparent border-white/10 focus-visible:ring-amber-500"
+              placeholder="Paste the financial LLM answer here, or click above to auto-extract from document..."
+              className="min-h-[160px] text-sm font-sans leading-relaxed bg-black/30 border-white/10 focus-visible:ring-amber-500 rounded-xl"
             />
             <div className="flex items-center justify-between text-[11px] text-slate-400">
-              <span>{answer.length} characters</span>
+              <span className="font-mono">{answer.length} characters</span>
               {uploadedDoc && !answer && !isExtracting && (
-                <span className="text-amber-400 cursor-pointer hover:underline" onClick={() => handleExtractFacts()}>
-                  ✨ Click here to auto-generate facts from document
-                </span>
+                <button type="button" className="text-amber-400 hover:underline cursor-pointer font-semibold flex items-center gap-1" onClick={() => handleExtractFacts()}>
+                  <Sparkles className="h-3 w-3" /> Auto-extract financial claims with LLM
+                </button>
               )}
             </div>
 
-            <div className="glass-subtle border border-white/10 rounded-lg p-4">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Verification Pipeline Stages</div>
-              <div className="grid grid-cols-2 gap-3">
+            {/* Retrieval Mode Selector */}
+            <div className="glass-subtle border border-white/10 rounded-xl p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Retrieval Engine Architecture</span>
+                <span className="text-[10px] font-mono font-bold text-indigo-300 uppercase">{retrievalMode} RAG</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: "hybrid", label: "BM25 Hybrid", desc: "Dense + Sparse Fusion", badge: "Recommended" },
+                  { id: "dense", label: "Dense Semantic", desc: "MiniLM Embeddings", badge: "Vector" },
+                  { id: "bm25", label: "BM25 Sparse", desc: "Exact Term Overlap", badge: "Lexical" },
+                ].map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => setRetrievalMode(mode.id)}
+                    className={`p-2.5 rounded-xl text-left border transition-all ${
+                      retrievalMode === mode.id
+                        ? "border-indigo-400/50 bg-indigo-500/20 text-white shadow-[0_0_12px_rgba(99,102,241,0.25)]"
+                        : "border-white/5 bg-white/[0.02] text-slate-400 hover:border-white/10"
+                    }`}
+                  >
+                    <div className="text-xs font-bold text-white">{mode.label}</div>
+                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">{mode.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="glass-subtle border border-white/10 rounded-xl p-3.5">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2.5">Verification Pipeline Flow</div>
+              <div className="grid grid-cols-2 gap-2.5">
                 {stages.map((s) => (
-                  <div key={s.label} className="flex items-center gap-2 text-xs font-medium text-slate-300">
+                  <div key={s.label} className="flex items-center gap-2 text-xs font-semibold text-slate-300">
                     <s.icon className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                    {s.label}
+                    <span>{s.label}</span>
                   </div>
                 ))}
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
         </motion.div>
       </div>
 

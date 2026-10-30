@@ -36,6 +36,10 @@ export interface Evidence {
   text: string;
   page_number: number;
   similarity_score: number;
+  dense_score?: number | null;
+  bm25_score?: number | null;
+  retrieval_method?: string;
+  matched_keywords?: string[];
   bounding_box?: BoundingBox | null;
   is_ocr?: boolean;
   extraction_method?: string;
@@ -82,6 +86,10 @@ export interface ClaimResponse {
   nli: NLIResult | null;
   numerical_finding?: NumericalFinding | null;
   temporal_anchor?: TemporalAnchor | null;
+  hallucination_type?: string | null;
+  hallucination_risk_score?: number | null;
+  reasoning_summary?: string | null;
+  multi_hop_finding?: any;
 }
 
 export interface VerificationResultResponse {
@@ -163,10 +171,15 @@ export function getDocumentFileUrl(documentId: string): string {
 export async function startVerification(
   documentId: string,
   llmOutput: string,
+  retrievalMode?: string,
 ): Promise<VerificationResultResponse> {
+  const payload: any = { document_id: documentId, llm_output: llmOutput };
+  if (retrievalMode) {
+    payload.retrieval_mode = retrievalMode;
+  }
   const response = await api.post<VerificationResultResponse>(
     '/api/verification/start',
-    { document_id: documentId, llm_output: llmOutput },
+    payload,
   );
   return response.data;
 }
@@ -249,25 +262,26 @@ export function nliColor(label: string): {
     case 'SUPPORTED':
     case 'ENTAILMENT':
       return {
-        text: 'text-emerald-700',
-        bg: 'bg-emerald-50',
-        border: 'border-emerald-200',
+        text: 'text-emerald-300',
+        bg: 'bg-emerald-500/10',
+        border: 'border-emerald-400/30',
       };
     case 'CONTRADICTED':
     case 'CONTRADICTION':
       return {
-        text: 'text-rose-700',
-        bg: 'bg-rose-50',
-        border: 'border-rose-200',
+        text: 'text-rose-300',
+        bg: 'bg-rose-500/10',
+        border: 'border-rose-400/30',
       };
     default:
       return {
-        text: 'text-amber-700',
-        bg: 'bg-amber-50',
-        border: 'border-amber-200',
+        text: 'text-amber-300',
+        bg: 'bg-amber-500/10',
+        border: 'border-amber-400/30',
       };
   }
 }
+
 
 /**
  * Fetch all extracted text chunks and OCR metadata for a document.

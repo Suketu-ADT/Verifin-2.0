@@ -14,6 +14,13 @@ import {
   Loader2,
   Calculator,
   Calendar,
+  Layers,
+  ShieldAlert,
+  Search,
+  Download,
+  Copy,
+  Check,
+  Sparkles,
 } from "lucide-react"
 import { demoSessions, claimCounts, type NLILabel } from "../lib/demoData"
 import {
@@ -42,6 +49,8 @@ export default function ResultsDashboard() {
   const [docMeta, setDocMeta] = useState<DocumentResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [activeFilter, setActiveFilter] = useState<"ALL" | "CONTRADICTED" | "SUPPORTED" | "UNVERIFIABLE">("ALL")
+  const [copiedId, setCopiedId] = useState(false)
 
   useEffect(() => {
     if (demoSession || !id) return
@@ -54,9 +63,7 @@ export default function ResultsDashboard() {
         if (res.document_id) {
           getDocument(res.document_id)
             .then(setDocMeta)
-            .catch(() => {
-              // Silently fallback to document_id if metadata not reachable
-            })
+            .catch(() => {})
         }
       })
       .catch((err) => {
@@ -66,12 +73,21 @@ export default function ResultsDashboard() {
       })
   }, [id, demoSession])
 
+  const copySessionId = () => {
+    if (!id) return
+    navigator.clipboard.writeText(id)
+    setCopiedId(true)
+    setTimeout(() => setCopiedId(false), 2000)
+  }
+
   // 1. Loading state for live query
   if (loading) {
     return (
       <div className="max-w-2xl mx-auto text-center py-24 space-y-4">
-        <Loader2 className="h-8 w-8 text-amber-400 animate-spin mx-auto" />
-        <h1 className="text-lg font-semibold text-white">Retrieving Verification Session...</h1>
+        <div className="h-12 w-12 rounded-2xl bg-amber-500/10 border border-amber-400/20 flex items-center justify-center mx-auto">
+          <Loader2 className="h-6 w-6 text-amber-400 animate-spin" />
+        </div>
+        <h1 className="text-lg font-bold text-white">Retrieving Verification Audit...</h1>
         <p className="text-xs text-slate-400 font-mono">Querying MongoDB Atlas for session {id}</p>
       </div>
     )
@@ -81,76 +97,186 @@ export default function ResultsDashboard() {
   if (demoSession) {
     const counts = claimCounts(demoSession.claims)
     const overallScore = Math.round((counts.supported / counts.total) * 100)
+    const filteredClaims = demoSession.claims.filter((c) => {
+      if (activeFilter === "ALL") return true
+      if (activeFilter === "CONTRADICTED") return c.nli?.label === "CONTRADICTED"
+      if (activeFilter === "SUPPORTED") return c.nli?.label === "SUPPORTED"
+      return c.nli?.label === "UNVERIFIABLE"
+    })
 
     return (
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: "easeOut" }} className="space-y-6">
-        <div>
-          <Link to="/verify" className="inline-flex items-center text-xs font-semibold text-slate-400 hover:text-white mb-3">
-            <ArrowLeft className="h-3.5 w-3.5 mr-1" /> New verification
-          </Link>
-          <div className="flex items-center gap-2 mb-1.5">
-            <h1 className="text-2xl font-bold tracking-tight text-white">{demoSession.title}</h1>
-            <Badge variant="outline" className="text-amber-300 border-amber-400/30 bg-amber-500/10">Demo Data</Badge>
+        {/* Header Breadcrumbs & Quick Actions */}
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+          <div>
+            <Link to="/verify" className="inline-flex items-center text-xs font-semibold text-slate-400 hover:text-white mb-2">
+              <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back to Verification Launchpad
+            </Link>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-2xl font-extrabold tracking-tight text-white">{demoSession.title}</h1>
+              <Badge variant="outline" className="text-amber-300 border-amber-400/30 bg-amber-500/10 font-mono text-[10px]">
+                Demo Dataset
+              </Badge>
+              <Badge variant="outline" className="text-indigo-300 border-indigo-400/30 bg-indigo-500/10 font-mono text-[10px]">
+                BM25 Hybrid RAG
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 font-mono">
+              <FileText className="h-3.5 w-3.5 text-slate-400" />
+              <span>{demoSession.document}</span>
+              <span>·</span>
+              <span>{demoSession.claims.length} claims audited</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 text-sm text-slate-400">
-            <FileText className="h-3.5 w-3.5" /> {demoSession.document}
+
+          <div className="flex items-center gap-2">
+            <Link to="/evidence">
+              <Button variant="outline" size="sm" className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
+                <Search className="h-3.5 w-3.5 text-indigo-400" /> Inspect Evidence Corpus
+              </Button>
+            </Link>
+            <Button variant="outline" size="sm" onClick={() => window.print()} className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
+              <Download className="h-3.5 w-3.5" /> Print Audit
+            </Button>
           </div>
         </div>
 
-        <div className="glass-subtle border border-white/10 rounded-lg p-5 space-y-3">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">LLM-generated answer under review</div>
-          <p className="text-sm font-serif text-slate-200 leading-relaxed">{demoSession.llm_output}</p>
+        {/* LLM answer panel */}
+        <div className="glass-card rounded-2xl p-5 border border-white/10 space-y-2 relative overflow-hidden">
+          <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            <span className="flex items-center gap-1.5 text-amber-300">
+              <Sparkles className="h-3 w-3" /> LLM-Generated Financial Synthesis Under Review
+            </span>
+            <span className="font-mono text-slate-400">Prompt Target: FY2025 Performance</span>
+          </div>
+          <p className="text-sm font-medium text-slate-200 leading-relaxed bg-black/30 p-4 rounded-xl border border-white/5">
+            "{demoSession.llm_output}"
+          </p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card><CardContent className="p-4">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Claims Checked</div>
-            <div className="text-2xl font-bold text-white">{counts.total}</div>
-          </CardContent></Card>
-          <Card className="border-emerald-400/30"><CardContent className="p-4">
-            <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1">Supported</div>
-            <div className="text-2xl font-bold text-emerald-400">{counts.supported}</div>
-          </CardContent></Card>
-          <Card className="border-rose-400/30"><CardContent className="p-4">
-            <div className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1">Contradicted</div>
-            <div className="text-2xl font-bold text-rose-400">{counts.contradicted}</div>
-          </CardContent></Card>
-          <Card className="border-amber-400/30"><CardContent className="p-4">
+        {/* 4 Metric Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="glass-card rounded-2xl p-4 border border-white/10">
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Claims Audited</div>
+            <div className="text-2xl font-bold text-white font-mono">{counts.total}</div>
+            <div className="text-[11px] text-slate-400 mt-1">100% evaluated</div>
+          </div>
+          <div className="glass-card rounded-2xl p-4 border border-emerald-400/30">
+            <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1">Supported Facts</div>
+            <div className="text-2xl font-bold text-emerald-400 font-mono">{counts.supported}</div>
+            <div className="text-[11px] text-emerald-400/80 mt-1 font-mono">{overallScore}% support rate</div>
+          </div>
+          <div className="glass-card rounded-2xl p-4 border border-rose-400/30">
+            <div className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1">Hallucinations</div>
+            <div className="text-2xl font-bold text-rose-400 font-mono">{counts.contradicted}</div>
+            <div className="text-[11px] text-rose-400/80 mt-1 font-mono">{Math.round((counts.contradicted / counts.total) * 100)}% contradiction rate</div>
+          </div>
+          <div className="glass-card rounded-2xl p-4 border border-amber-400/30">
             <div className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-1">Unverifiable</div>
-            <div className="text-2xl font-bold text-amber-400">{counts.unverifiable}</div>
-          </CardContent></Card>
+            <div className="text-2xl font-bold text-amber-400 font-mono">{counts.unverifiable}</div>
+            <div className="text-[11px] text-amber-400/80 mt-1 font-mono">Missing evidence</div>
+          </div>
         </div>
 
-        <div className="glass-subtle border border-white/10 rounded-lg p-4 flex items-center justify-between">
-          <span className="text-sm font-semibold text-slate-300">Overall support rate</span>
-          <span className="text-sm font-bold text-white">{overallScore}% of claims supported by the source document</span>
+        {/* Support Rate Progress Banner */}
+        <div className="glass-card rounded-2xl p-4 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-white">Overall Factual Support Rate</span>
+              <span className="text-xs font-mono font-bold text-emerald-400">{overallScore}%</span>
+            </div>
+            <p className="text-xs text-slate-400">
+              Proportion of model assertions backed by SEC 10-K document evidence.
+            </p>
+          </div>
+          <div className="w-full sm:w-64 h-2.5 bg-black/40 rounded-full overflow-hidden flex border border-white/5">
+            <div className="h-full bg-emerald-400" style={{ width: `${overallScore}%` }} />
+            <div className="h-full bg-rose-500" style={{ width: `${Math.round((counts.contradicted / counts.total) * 100)}%` }} />
+            <div className="h-full bg-amber-400" style={{ width: `${Math.round((counts.unverifiable / counts.total) * 100)}%` }} />
+          </div>
         </div>
 
-        <motion.div variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} initial="hidden" animate="show" className="space-y-3">
-          <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Claim-by-claim verification</h2>
-          {demoSession.claims.map((c, i) => {
-            const meta = verdictMeta(c.nli?.label)
-            return (
-              <Link key={c.id} to={`/verify/results/${demoSession.id}/claim/${c.id}`} className="block">
-                <motion.div variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }} whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} transition={{ duration: 0.15 }}>
-                  <Card className={`hover:bg-white/[0.04] transition-colors border ${meta.bg}`}>
-                  <CardContent className="p-4 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="text-xs font-mono text-slate-400 shrink-0">{String(i + 1).padStart(2, "0")}</span>
-                      <meta.icon className={`h-4 w-4 shrink-0 ${meta.text}`} />
-                      <p className="text-sm font-medium text-white truncate">{c.claim_text}</p>
+        {/* Claim-by-Claim Section with Filter Buttons */}
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Claim-by-Claim Verification Graph</h2>
+              <p className="text-xs text-slate-400">Select any claim to inspect NLI probabilities and exact PDF coordinates</p>
+            </div>
+
+            <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10 text-xs">
+              {(["ALL", "CONTRADICTED", "SUPPORTED", "UNVERIFIABLE"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setActiveFilter(filter)}
+                  className={`px-2.5 py-1 rounded-lg font-semibold transition-all text-[11px] ${
+                    activeFilter === filter
+                      ? "bg-amber-400 text-neutral-950 shadow"
+                      : "text-slate-400 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  {filter === "ALL" ? `All (${demoSession.claims.length})` : filter === "CONTRADICTED" ? `Contradicted (${counts.contradicted})` : filter === "SUPPORTED" ? `Supported (${counts.supported})` : `Unverified (${counts.unverifiable})`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <motion.div variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} initial="hidden" animate="show" className="space-y-3">
+            {filteredClaims.map((c, i) => {
+              const meta = verdictMeta(c.nli?.label)
+              return (
+                <Link key={c.id} to={`/verify/results/${demoSession.id}/claim/${c.id}`} className="block group">
+                  <motion.div variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }} whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }} transition={{ duration: 0.15 }}>
+                    <div className={`glass-card rounded-2xl p-4 border transition-all ${meta.bg}`}>
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="text-xs font-mono font-bold text-slate-400 shrink-0">{String(i + 1).padStart(2, "0")}</span>
+                          <meta.icon className={`h-4 w-4 shrink-0 ${meta.text}`} />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-white truncate group-hover:text-amber-200 transition-colors">
+                              {c.claim_text}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                              {c.evidence && c.evidence.page_number > 0 && (
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-slate-300">
+                                  Page {c.evidence.page_number}
+                                </span>
+                              )}
+                              {c.evidence?.retrieval_method && (
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-indigo-400/30 text-indigo-300 bg-indigo-500/10">
+                                  {c.evidence.retrieval_method === "hybrid" ? "Hybrid RAG" : c.evidence.retrieval_method}
+                                </span>
+                              )}
+                              {c.hallucination_type && c.hallucination_type !== "NONE" && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border border-rose-400/30 text-rose-300 bg-rose-500/10">
+                                  <ShieldAlert className="h-2.5 w-2.5" />
+                                  {c.hallucination_type.replace(/_/g, " ")}
+                                </span>
+                              )}
+                              {c.numerical_finding && c.numerical_finding.comparison_outcome !== "NO_CALCULATION" && (
+                                <span className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                                  c.numerical_finding.comparison_outcome === "VALIDATED" ? "text-emerald-300 border-emerald-400/30 bg-emerald-500/10" : "text-rose-300 border-rose-400/30 bg-rose-500/10"
+                                }`}>
+                                  <Calculator className="h-2.5 w-2.5" />
+                                  Math: {c.numerical_finding.comparison_outcome}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className={`text-xs font-bold uppercase tracking-wider font-mono ${meta.text}`}>{meta.label}</span>
+                          <ChevronRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className={`text-xs font-bold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
-                      <ChevronRight className="h-4 w-4 text-slate-400" />
-                    </div>
-                  </CardContent>
-                </Card>
-                </motion.div>
-              </Link>
-            )
-          })}
-        </motion.div>
+                  </motion.div>
+                </Link>
+              )
+            })}
+          </motion.div>
+        </div>
       </motion.div>
     )
   }
@@ -165,137 +291,219 @@ export default function ResultsDashboard() {
       (c) => c.status === "CONTRADICTED" || c.status === "CONTRADICTION"
     ).length
     const unverifiableCount = totalClaims - (supportedCount + contradictedCount)
-
     const docDisplayName = docMeta?.filename || `Document: ${liveSession.document_id}`
+
+    const filteredClaims = liveSession.claims.filter((c) => {
+      const norm = (c.status || "").toUpperCase()
+      if (activeFilter === "ALL") return true
+      if (activeFilter === "CONTRADICTED") return norm === "CONTRADICTED" || norm === "CONTRADICTION"
+      if (activeFilter === "SUPPORTED") return norm === "SUPPORTED" || norm === "ENTAILMENT"
+      return norm !== "CONTRADICTED" && norm !== "CONTRADICTION" && norm !== "SUPPORTED" && norm !== "ENTAILMENT"
+    })
 
     return (
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: "easeOut" }} className="space-y-6">
-        <div>
-          <Link to="/verify" className="inline-flex items-center text-xs font-semibold text-slate-400 hover:text-white mb-3">
-            <ArrowLeft className="h-3.5 w-3.5 mr-1" /> New verification
-          </Link>
-          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <h1 className="text-2xl font-bold tracking-tight text-white">Live Verification Results</h1>
-            <Badge variant="outline" className="text-emerald-400 border-emerald-400/30 bg-emerald-500/10">Live Verification</Badge>
-            <Badge variant="outline" className="text-amber-300 border-amber-400/30 bg-amber-500/10 uppercase font-mono text-[10px]">
-              {liveSession.status}
-            </Badge>
-            <Badge variant="outline" className="text-slate-300 border-white/20 bg-white/5 uppercase font-mono text-[10px]">
-              Risk: {liveSession.risk_level}
-            </Badge>
+        {/* Header Breadcrumbs & Quick Actions */}
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+          <div>
+            <Link to="/verify" className="inline-flex items-center text-xs font-semibold text-slate-400 hover:text-white mb-2">
+              <ArrowLeft className="h-3.5 w-3.5 mr-1" /> New Verification
+            </Link>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-2xl font-extrabold tracking-tight text-white">Live Verification Results</h1>
+              <Badge variant="outline" className="text-emerald-400 border-emerald-400/30 bg-emerald-500/10 font-mono text-[10px]">
+                Live Session
+              </Badge>
+              <Badge variant="outline" className="text-indigo-300 border-indigo-400/30 bg-indigo-500/10 font-mono text-[10px]">
+                BM25 Hybrid RAG
+              </Badge>
+              <Badge variant="outline" className="text-amber-300 border-amber-400/30 bg-amber-500/10 font-mono text-[10px]">
+                Risk: {liveSession.risk_level}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-mono">
+              <span className="flex items-center gap-1">
+                <FileText className="h-3.5 w-3.5 text-slate-400" />
+                {docDisplayName}
+              </span>
+              <span>·</span>
+              <button onClick={copySessionId} className="hover:text-white flex items-center gap-1">
+                <span>Session: {liveSession.id.slice(0, 8)}...</span>
+                {copiedId ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-3 text-xs text-slate-400 font-mono">
-            <span className="flex items-center gap-1">
-              <FileText className="h-3.5 w-3.5 text-slate-400" />
-              {docDisplayName}
-            </span>
-            <span>·</span>
-            <span>Session: {liveSession.id.slice(0, 8)}...</span>
+
+          <div className="flex items-center gap-2">
+            <Link to={`/evidence?session=${liveSession.id}`}>
+              <Button variant="outline" size="sm" className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
+                <Search className="h-3.5 w-3.5 text-indigo-400" /> Inspect Evidence
+              </Button>
+            </Link>
+            <Button variant="outline" size="sm" onClick={() => window.print()} className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
+              <Download className="h-3.5 w-3.5" /> Print Audit
+            </Button>
           </div>
         </div>
 
         {/* Metric Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card><CardContent className="p-4">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Claims Checked</div>
-            <div className="text-2xl font-bold text-white">{totalClaims}</div>
-          </CardContent></Card>
-          <Card className="border-emerald-400/30"><CardContent className="p-4">
-            <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1">Supported</div>
-            <div className="text-2xl font-bold text-emerald-400">{supportedCount}</div>
-          </CardContent></Card>
-          <Card className="border-rose-400/30"><CardContent className="p-4">
-            <div className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1">Contradicted</div>
-            <div className="text-2xl font-bold text-rose-400">{contradictedCount}</div>
-          </CardContent></Card>
-          <Card className="border-amber-400/30"><CardContent className="p-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="glass-card rounded-2xl p-4 border border-white/10">
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Claims Audited</div>
+            <div className="text-2xl font-bold text-white font-mono">{totalClaims}</div>
+            <div className="text-[11px] text-slate-400 mt-1">Status: {liveSession.status}</div>
+          </div>
+          <div className="glass-card rounded-2xl p-4 border border-emerald-400/30">
+            <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1">Supported Facts</div>
+            <div className="text-2xl font-bold text-emerald-400 font-mono">{supportedCount}</div>
+            <div className="text-[11px] text-emerald-400/80 mt-1 font-mono">{liveSession.overall_score}% verified</div>
+          </div>
+          <div className="glass-card rounded-2xl p-4 border border-rose-400/30">
+            <div className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1">Hallucinations</div>
+            <div className="text-2xl font-bold text-rose-400 font-mono">{contradictedCount}</div>
+            <div className="text-[11px] text-rose-400/80 mt-1 font-mono">{totalClaims > 0 ? Math.round((contradictedCount / totalClaims) * 100) : 0}% contradiction</div>
+          </div>
+          <div className="glass-card rounded-2xl p-4 border border-amber-400/30">
             <div className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-1">Unverifiable</div>
-            <div className="text-2xl font-bold text-amber-400">{unverifiableCount}</div>
-          </CardContent></Card>
+            <div className="text-2xl font-bold text-amber-400 font-mono">{unverifiableCount}</div>
+            <div className="text-[11px] text-amber-400/80 mt-1 font-mono">Missing evidence</div>
+          </div>
         </div>
 
-        {/* Overall Score Banner */}
-        <div className="glass-subtle border border-white/10 rounded-lg p-4 flex items-center justify-between">
-          <span className="text-sm font-semibold text-slate-300">Overall support rate</span>
-          <span className="text-sm font-bold text-white">
-            {liveSession.overall_score}% of claims supported by the source document
-          </span>
+        {/* Overall Score Progress Banner */}
+        <div className="glass-card rounded-2xl p-4 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-white">Overall Factual Support Rate</span>
+              <span className="text-xs font-mono font-bold text-emerald-400">{liveSession.overall_score}%</span>
+            </div>
+            <p className="text-xs text-slate-400">
+              Computed ratio of supported statements grounded in the uploaded document.
+            </p>
+          </div>
+          <div className="w-full sm:w-64 h-2.5 bg-black/40 rounded-full overflow-hidden flex border border-white/5">
+            <div className="h-full bg-emerald-400" style={{ width: `${liveSession.overall_score}%` }} />
+            <div className="h-full bg-rose-500" style={{ width: `${totalClaims > 0 ? Math.round((contradictedCount / totalClaims) * 100) : 0}%` }} />
+            <div className="h-full bg-amber-400" style={{ width: `${totalClaims > 0 ? Math.round((unverifiableCount / totalClaims) * 100) : 0}%` }} />
+          </div>
         </div>
 
-        {/* Claim-by-Claim Verification */}
+        {/* Claim-by-Claim Section */}
         {totalClaims > 0 ? (
-          <motion.div variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} initial="hidden" animate="show" className="space-y-3">
-            <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Claim-by-claim verification</h2>
-            {liveSession.claims.map((c, i) => {
-              const meta = verdictMeta(c.status)
-              return (
-                <Link key={c.id} to={`/verify/results/${liveSession.id}/claim/${c.id}`} className="block">
-                  <motion.div variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }} whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} transition={{ duration: 0.15 }}>
-                    <Card className={`hover:bg-white/[0.04] transition-colors border ${meta.bg}`}>
-                      <CardContent className="p-4 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="text-xs font-mono text-slate-400 shrink-0">{String(i + 1).padStart(2, "0")}</span>
-                          <meta.icon className={`h-4 w-4 shrink-0 ${meta.text}`} />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-white truncate">{c.claim_text}</p>
-                            <div className="flex items-center gap-2 mt-1 flex-wrap">
-                              {c.evidence && c.evidence.page_number > 0 && (
-                                <span className="text-[11px] font-mono text-slate-400">
-                                  Page {c.evidence.page_number}
-                                </span>
-                              )}
-                              {c.numerical_finding && c.numerical_finding.comparison_outcome !== "NO_CALCULATION" && (
-                                <span
-                                  className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${
-                                    c.numerical_finding.comparison_outcome === "VALIDATED"
-                                      ? "text-emerald-300 border-emerald-400/30 bg-emerald-500/10"
-                                      : "text-rose-300 border-rose-400/30 bg-rose-500/10"
-                                  }`}
-                                >
-                                  <Calculator className="h-2.5 w-2.5" />
-                                  Math: {c.numerical_finding.comparison_outcome}
-                                </span>
-                              )}
-                              {c.temporal_anchor && c.temporal_anchor.period_match !== "UNSPECIFIED" && (
-                                <span
-                                  className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${
-                                    c.temporal_anchor.period_match === "ALIGNED"
-                                      ? "text-emerald-300 border-emerald-400/30 bg-emerald-500/10"
-                                      : c.temporal_anchor.period_match === "MISALIGNED"
-                                      ? "text-rose-300 border-rose-400/30 bg-rose-500/10"
-                                      : "text-amber-300 border-amber-400/30 bg-amber-500/10"
-                                  }`}
-                                >
-                                  <Calendar className="h-2.5 w-2.5" />
-                                  {c.temporal_anchor.period_match}
-                                </span>
-                              )}
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Claim-by-Claim Verification Graph</h2>
+                <p className="text-xs text-slate-400">Select any claim to view natural language inference scores and evidence coordinates</p>
+              </div>
+
+              <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10 text-xs">
+                {(["ALL", "CONTRADICTED", "SUPPORTED", "UNVERIFIABLE"] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setActiveFilter(filter)}
+                    className={`px-2.5 py-1 rounded-lg font-semibold transition-all text-[11px] ${
+                      activeFilter === filter
+                        ? "bg-amber-400 text-neutral-950 shadow"
+                        : "text-slate-400 hover:text-white hover:bg-white/5"
+                    }`}
+                  >
+                    {filter === "ALL" ? `All (${totalClaims})` : filter === "CONTRADICTED" ? `Contradicted (${contradictedCount})` : filter === "SUPPORTED" ? `Supported (${supportedCount})` : `Unverified (${unverifiableCount})`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <motion.div variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} initial="hidden" animate="show" className="space-y-3">
+              {filteredClaims.map((c, i) => {
+                const meta = verdictMeta(c.status)
+                return (
+                  <Link key={c.id} to={`/verify/results/${liveSession.id}/claim/${c.id}`} className="block group">
+                    <motion.div variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }} whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }} transition={{ duration: 0.15 }}>
+                      <div className={`glass-card rounded-2xl p-4 border transition-all ${meta.bg}`}>
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="text-xs font-mono font-bold text-slate-400 shrink-0">{String(i + 1).padStart(2, "0")}</span>
+                            <meta.icon className={`h-4 w-4 shrink-0 ${meta.text}`} />
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-white truncate group-hover:text-amber-200 transition-colors">
+                                {c.claim_text}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                {c.evidence && c.evidence.page_number > 0 && (
+                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-slate-300">
+                                    Page {c.evidence.page_number}
+                                  </span>
+                                )}
+                                {c.evidence?.retrieval_method && (
+                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-indigo-400/30 text-indigo-300 bg-indigo-500/10">
+                                    {c.evidence.retrieval_method === "hybrid" ? "Hybrid RAG" : c.evidence.retrieval_method}
+                                  </span>
+                                )}
+                                {c.hallucination_type && c.hallucination_type !== "NONE" && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border border-rose-400/30 text-rose-300 bg-rose-500/10">
+                                    <ShieldAlert className="h-2.5 w-2.5" />
+                                    {c.hallucination_type.replace(/_/g, " ")}
+                                  </span>
+                                )}
+                                {c.numerical_finding && c.numerical_finding.comparison_outcome !== "NO_CALCULATION" && (
+                                  <span
+                                    className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                                      c.numerical_finding.comparison_outcome === "VALIDATED"
+                                        ? "text-emerald-300 border-emerald-400/30 bg-emerald-500/10"
+                                        : "text-rose-300 border-rose-400/30 bg-rose-500/10"
+                                    }`}
+                                  >
+                                    <Calculator className="h-2.5 w-2.5" />
+                                    Math: {c.numerical_finding.comparison_outcome}
+                                  </span>
+                                )}
+                                {c.temporal_anchor && c.temporal_anchor.period_match !== "UNSPECIFIED" && (
+                                  <span
+                                    className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                                      c.temporal_anchor.period_match === "ALIGNED"
+                                        ? "text-emerald-300 border-emerald-400/30 bg-emerald-500/10"
+                                        : c.temporal_anchor.period_match === "MISALIGNED"
+                                        ? "text-rose-300 border-rose-400/30 bg-rose-500/10"
+                                        : "text-amber-300 border-amber-400/30 bg-amber-500/10"
+                                    }`}
+                                  >
+                                    <Calendar className="h-2.5 w-2.5" />
+                                    {c.temporal_anchor.period_match}
+                                  </span>
+                                )}
+                                {c.multi_hop_finding && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border border-cyan-400/30 text-cyan-300 bg-cyan-500/10">
+                                    <Layers className="h-2.5 w-2.5" />
+                                    Multi-Hop
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
+
+                          <div className="flex items-center gap-3 shrink-0">
+                            <span className={`text-xs font-bold uppercase tracking-wider font-mono ${meta.text}`}>{meta.label}</span>
+                            <ChevronRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <span className={`text-xs font-bold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
-                          <ChevronRight className="h-4 w-4 text-slate-400" />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                </Link>
-              )
-            })}
-          </motion.div>
+                      </div>
+                    </motion.div>
+                  </Link>
+                )
+              })}
+            </motion.div>
+          </div>
         ) : (
-          <Card className="border-white/10 bg-white/[0.02]">
-            <CardContent className="p-8 text-center space-y-2">
-              <p className="text-sm text-slate-300 font-medium">No discrete financial claims found</p>
-              <p className="text-xs text-slate-500">The provided text did not yield extractable factual claims.</p>
-            </CardContent>
-          </Card>
+          <div className="glass-card rounded-2xl p-8 text-center space-y-2 border border-white/10">
+            <p className="text-sm text-slate-300 font-semibold">No discrete financial claims identified</p>
+            <p className="text-xs text-slate-400">The provided text did not yield extractable factual claims.</p>
+          </div>
         )}
 
         <div className="flex justify-end gap-3 pt-4">
           <Link to="/verify">
-            <Button variant="outline">Upload Another Document</Button>
+            <Button variant="outline" className="border-white/15 hover:bg-white/10">Upload Another Document</Button>
           </Link>
         </div>
       </motion.div>
@@ -304,12 +512,16 @@ export default function ResultsDashboard() {
 
   // 4. Session not found
   return (
-    <div className="max-w-2xl mx-auto text-center py-20">
-      <h1 className="text-xl font-bold text-white mb-2">Verification not found</h1>
-      <p className="text-sm text-slate-400 mb-6">
+    <div className="max-w-2xl mx-auto text-center py-20 space-y-4">
+      <div className="h-12 w-12 rounded-2xl bg-rose-500/10 border border-rose-400/20 flex items-center justify-center mx-auto text-rose-400">
+        <AlertTriangle className="h-6 w-6" />
+      </div>
+      <h1 className="text-xl font-bold text-white mb-2">Verification Session Not Found</h1>
+      <p className="text-sm text-slate-400 mb-6 max-w-md mx-auto">
         {loadError || `Session "${id}" does not exist in MongoDB Atlas or demo datasets.`}
       </p>
-      <Link to="/verify"><Button>Start a new verification</Button></Link>
+      <Link to="/verify"><Button>Start a New Verification</Button></Link>
     </div>
   )
 }
+

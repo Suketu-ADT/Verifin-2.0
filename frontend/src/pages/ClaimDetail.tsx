@@ -16,6 +16,10 @@ import {
   Maximize2,
   Eye,
   EyeOff,
+  Layers,
+  Search,
+  ShieldAlert,
+  Hash,
 } from "lucide-react"
 import { demoSessions } from "../lib/demoData"
 import {
@@ -259,10 +263,89 @@ export default function ClaimDetail() {
         </div>
       )}
 
-      {/* Retrieved Evidence Card */}
+      {/* Multi-Hop Synthesis Audit Card */}
+      {activeClaim.multi_hop_finding && (
+        <div className="glass-subtle border border-cyan-400/30 bg-cyan-500/5 rounded-lg p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Layers className="h-4 w-4 text-cyan-400" />
+              <div className="text-[10px] font-bold text-cyan-300 uppercase tracking-widest">
+                Multi-Hop Financial Provenance Graph
+              </div>
+            </div>
+            <Badge
+              variant="outline"
+              className={
+                activeClaim.multi_hop_finding.has_conflict
+                  ? "text-rose-300 border-rose-400/30 bg-rose-500/10 font-mono text-[10px]"
+                  : "text-cyan-300 border-cyan-400/30 bg-cyan-500/10 font-mono text-[10px]"
+              }
+            >
+              {activeClaim.multi_hop_finding.has_conflict ? "CONFLICT DETECTED" : "SYNTHESIZED"}
+            </Badge>
+          </div>
+
+          {activeClaim.multi_hop_finding.derived_formula && (
+            <div className="p-2.5 rounded bg-black/40 border border-white/5 font-mono text-xs text-slate-300">
+              <span className="text-slate-500 mr-2">Formula:</span>
+              <span className="text-cyan-200">{activeClaim.multi_hop_finding.derived_formula}</span>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2 text-xs font-mono">
+            {activeClaim.multi_hop_finding.provenance_pages && (
+              <div className="p-2 rounded bg-white/[0.02] border border-white/5">
+                <span className="text-slate-500 block text-[10px]">Cross-Page Provenance</span>
+                <span className="text-white">Pages {activeClaim.multi_hop_finding.provenance_pages.join(", ")}</span>
+              </div>
+            )}
+            {activeClaim.multi_hop_finding.computed_value !== null && (
+              <div className="p-2 rounded bg-white/[0.02] border border-white/5">
+                <span className="text-slate-500 block text-[10px]">Synthesized Metric</span>
+                <span className="text-cyan-300 font-semibold">{activeClaim.multi_hop_finding.target_metric}: ${Number(activeClaim.multi_hop_finding.computed_value).toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+
+          <p className="text-xs text-slate-300 font-sans leading-relaxed">
+            {activeClaim.multi_hop_finding.explanation}
+          </p>
+        </div>
+      )}
+
+      {/* Hallucination Diagnostics & Explainable Summary Card */}
+      {activeClaim.reasoning_summary && (
+        <div className="glass-subtle border border-amber-400/20 bg-amber-500/5 rounded-lg p-5 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-amber-400" />
+              <div className="text-[10px] font-bold text-amber-300 uppercase tracking-widest">
+                Hallucination Verification Diagnostic
+              </div>
+            </div>
+            {activeClaim.hallucination_type && activeClaim.hallucination_type !== "NONE" && (
+              <Badge variant="outline" className="text-rose-300 border-rose-400/30 bg-rose-500/10 font-mono text-[10px]">
+                {activeClaim.hallucination_type.replace(/_/g, " ")}
+              </Badge>
+            )}
+          </div>
+          <p className="text-xs text-slate-200 font-sans leading-relaxed">
+            {activeClaim.reasoning_summary}
+          </p>
+        </div>
+      )}
+
+      {/* Retrieved Evidence Card with BM25 Hybrid RAG Provenance */}
       <div className="glass-subtle border border-white/10 rounded-lg p-5 space-y-3">
         <div className="flex items-center justify-between mb-1">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Retrieved Evidence</div>
+          <div className="flex items-center gap-2">
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Retrieved Evidence</div>
+            {activeClaim.evidence?.retrieval_method && (
+              <Badge variant="outline" className="text-indigo-300 border-indigo-400/30 bg-indigo-500/10 text-[9px] uppercase font-mono">
+                {activeClaim.evidence.retrieval_method === "hybrid" ? "BM25 Hybrid RAG" : activeClaim.evidence.retrieval_method}
+              </Badge>
+            )}
+          </div>
           {activeClaim.evidence && activeClaim.evidence.page_number > 0 && (
             <div className="flex items-center gap-1.5 text-xs font-mono text-slate-400">
               <FileText className="h-3.5 w-3.5" /> {docTitle}, p. {activeClaim.evidence.page_number}
@@ -275,8 +358,41 @@ export default function ClaimDetail() {
             <p className="text-sm font-serif italic text-slate-300 leading-relaxed bg-white/[0.03] border border-white/10 rounded p-4">
               "{activeClaim.evidence.text}"
             </p>
-            <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-              <span>Similarity score: {(activeClaim.evidence.similarity_score * 100).toFixed(1)}%</span>
+
+            {/* Hybrid Retrieval Score Breakdown */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 py-1 text-[11px] font-mono">
+              <div className="p-2 rounded bg-white/[0.02] border border-white/5">
+                <span className="text-slate-500 block text-[9px] uppercase">Fused Hybrid Score</span>
+                <span className="text-indigo-300 font-semibold">{(activeClaim.evidence.similarity_score * 100).toFixed(1)}%</span>
+              </div>
+              {activeClaim.evidence.dense_score !== null && activeClaim.evidence.dense_score !== undefined && (
+                <div className="p-2 rounded bg-white/[0.02] border border-white/5">
+                  <span className="text-slate-500 block text-[9px] uppercase">Dense Similarity</span>
+                  <span className="text-white font-semibold">{(activeClaim.evidence.dense_score * 100).toFixed(1)}%</span>
+                </div>
+              )}
+              {activeClaim.evidence.bm25_score !== null && activeClaim.evidence.bm25_score !== undefined && (
+                <div className="p-2 rounded bg-white/[0.02] border border-white/5">
+                  <span className="text-slate-500 block text-[9px] uppercase">BM25 Lexical Score</span>
+                  <span className="text-amber-300 font-semibold">{activeClaim.evidence.bm25_score.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Matched Keywords Tags */}
+            {activeClaim.evidence.matched_keywords && activeClaim.evidence.matched_keywords.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] font-mono text-slate-500 uppercase mr-1">Matched Terms:</span>
+                {activeClaim.evidence.matched_keywords.map((kw: string, ki: number) => (
+                  <Badge key={ki} variant="outline" className="text-slate-300 border-white/10 bg-white/5 font-mono text-[9px] px-1.5 py-0">
+                    <Hash className="h-2.5 w-2.5 mr-0.5 text-amber-400" /> {kw}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between text-xs font-mono text-slate-400 pt-1">
+              <span>Overall Evidence Grounding: {(activeClaim.evidence.similarity_score * 100).toFixed(1)}%</span>
               {pdfUrl && (
                 <button
                   onClick={() => setShowPdfViewer(!showPdfViewer)}
