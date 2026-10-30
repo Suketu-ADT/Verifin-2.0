@@ -5,6 +5,7 @@ Dense Vector Embeddings, and Hybrid Reciprocal Rank Fusion (RRF).
 
 from __future__ import annotations
 
+import asyncio
 from typing import Dict, List, Optional, Tuple
 from fastapi import HTTPException, status
 
@@ -118,7 +119,7 @@ class RetrievalService:
         if retrieval_mode in ("hybrid", "dense"):
 
             try:
-                query_embedding = self.embedding_service.generate_embedding(query)
+                query_embedding = await asyncio.to_thread(self.embedding_service.generate_embedding, query)
             except Exception as exc:
                 logger.error(f"Failed to generate query embedding: {exc}")
                 raise HTTPException(
@@ -139,7 +140,8 @@ class RetrievalService:
         bm25_results: List[Tuple[DocumentChunkModel, float, List[str]]] = []
         if retrieval_mode in ("hybrid", "bm25"):
             bm25_candidates = len(all_chunks) if retrieval_mode == "hybrid" else fetch_k
-            bm25_results = self.bm25_service.search(
+            bm25_results = await asyncio.to_thread(
+                self.bm25_service.search,
                 query=query,
                 chunks=all_chunks,
                 document_id=document_id,
@@ -340,7 +342,8 @@ class RetrievalService:
             )
 
         # Exact Cosine Similarity Baseline over preloaded chunks
-        return self._exact_cosine_similarity_retrieval(
+        return await asyncio.to_thread(
+            self._exact_cosine_similarity_retrieval,
             query_embedding=query_embedding,
             chunks=chunks,
             k=k,

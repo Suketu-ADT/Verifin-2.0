@@ -2,6 +2,7 @@
 Verification repository for MongoDB interactions with verification_sessions and claims.
 """
 
+from datetime import datetime, timezone
 from typing import List, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.database.mongodb import get_database
@@ -36,6 +37,24 @@ class VerificationRepository:
         sess_dict = session.model_dump()
         await self.sessions_collection.insert_one(sess_dict)
         return session
+
+    async def update_session(self, session: VerificationSessionModel) -> None:
+        """Replaces a stored session (used when a queued job finishes)."""
+        await self.sessions_collection.replace_one({"id": session.id}, session.model_dump(), upsert=True)
+
+    async def set_status(self, session_id: str, status: str, error: Optional[str] = None) -> None:
+        await self.sessions_collection.update_one(
+            {"id": session_id},
+            {"$set": {"status": status, "error": error, "updated_at": datetime.now(timezone.utc)}},
+        )
+
+    async def fail_unfinished(self, reason: str) -> int:
+        """Marks queued/running sessions as failed. Called at startup: their worker died with the old process."""
+        result = await self.sessions_collection.update_many(
+            {"status": {"$in": ["queued", "running"]}},
+            {"$set": {"status": "failed", "error": reason, "updated_at": datetime.now(timezone.utc)}},
+        )
+        return int(result.modified_count)
 
     async def get_session_by_id(
         self, session_id: str

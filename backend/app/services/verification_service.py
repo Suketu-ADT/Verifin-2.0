@@ -6,6 +6,7 @@ and session persistence in MongoDB Atlas.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
@@ -117,7 +118,11 @@ class VerificationService:
         )
 
     async def start_verification_session(
-        self, request: StartVerificationRequest, user_id: Optional[str] = None, tenant_id: str = "public"
+        self,
+        request: StartVerificationRequest,
+        user_id: Optional[str] = None,
+        tenant_id: str = "public",
+        session_id: Optional[str] = None,
     ) -> VerificationResultResponse:
         """
         Validates request, extracts claims, retrieves hybrid document evidence,
@@ -156,7 +161,8 @@ class VerificationService:
                 detail=f"Document with ID '{doc_id}' not found.",
             )
 
-        session_id = str(uuid.uuid4())
+        queued = session_id is not None  # a background job already stored this session as 'queued'
+        session_id = session_id or str(uuid.uuid4())
 
         # 2. Extract discrete financial claims from LLM output
         extracted_claims = self.claim_extractor.extract_claims(llm_text)
@@ -209,7 +215,8 @@ class VerificationService:
 
             # 3b. Evaluate claim against retrieved evidence using CrossEncoder NLI
             try:
-                nli_result = self.nli_service.evaluate_claim_against_evidence(
+                nli_result = await asyncio.to_thread(
+                    self.nli_service.evaluate_claim_against_evidence,
                     claim_text=c_text,
                     evidence_chunks=evidence_chunks,
                     claim_type=c_type,
@@ -237,7 +244,9 @@ class VerificationService:
             ):
                 try:
                     fused_evidence_text = "\n\n".join([c.chunk_text for c in evidence_chunks[:2]])
-                    fused_probs = self.nli_service.predict_probabilities([(fused_evidence_text, c_text)])
+                    fused_probs = await asyncio.to_thread(
+                        self.nli_service.predict_probabilities, [(fused_evidence_text, c_text)]
+                    )
                     if fused_probs:
                         p_supp = fused_probs[0].get("SUPPORTED", 0.0)
                         p_contra = fused_probs[0].get("CONTRADICTED", 0.0)
@@ -516,7 +525,10 @@ class VerificationService:
         )
 
         try:
-            await self.verification_repo.create_session(session)
+            if queued:
+                await self.verification_repo.update_session(session)
+            else:
+                await self.verification_repo.create_session(session)
             if claim_models:
                 await self.verification_repo.save_claims(claim_models)
         except Exception as exc:
@@ -541,6 +553,48 @@ class VerificationService:
             status=session.status,
             claims=claim_responses,
         )
+
+    async def create_queued_session(
+        self, request: StartVerificationRequest, user_id: Optional[str], tenant_id: str
+    ) -> VerificationSessionModel:
+        """Validates the request and stores a session in 'queued' state for a background worker."""
+        doc_id = request.document_id.strip()
+        if not doc_id or not request.llm_output.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="document_id and llm_output cannot be empty.",
+            )
+        try:
+            document = await self.document_repo.get_document_by_id(doc_id)
+            if not document:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Document with ID '{doc_id}' not found.")
+            session = VerificationSessionModel(
+                id=str(uuid.uuid4()), user_id=user_id, tenant_id=tenant_id,
+                document_id=doc_id, llm_output=request.llm_output.strip(), status="queued",
+            )
+            await self.verification_repo.create_session(session)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error(f"Could not queue verification: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database error while queueing verification."
+            )
+        return session
+
+    async def get_session_status(self, session_id: str, tenant_id: Optional[str] = None) -> VerificationSessionModel:
+        try:
+            session = await self.verification_repo.get_session_by_id(session_id)
+        except Exception as exc:
+            logger.error(f"Error retrieving verification session: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database error while retrieving verification session."
+            )
+        if session and tenant_id is not None and session.tenant_id != tenant_id:
+            session = None
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Verification session '{session_id}' not found.")
+        return session
 
     async def get_results(self, session_id: str, tenant_id: Optional[str] = None) -> VerificationResultResponse:
         """

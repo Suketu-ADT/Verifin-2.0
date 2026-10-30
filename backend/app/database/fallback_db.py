@@ -204,6 +204,33 @@ class FallbackCollection:
             self._notify()
         return UpdateResult(count)
 
+    async def update_many(
+        self, query: Dict[str, Any], update: Dict[str, Any]
+    ) -> UpdateResult:
+        count = 0
+        for d in self._docs:
+            if _matches_filter(d, query):
+                d.update(update.get("$set", update))
+                count += 1
+        if count > 0:
+            self._notify()
+        return UpdateResult(count)
+
+    async def replace_one(
+        self, query: Dict[str, Any], replacement: Dict[str, Any], upsert: bool = False
+    ) -> UpdateResult:
+        for i, d in enumerate(self._docs):
+            if _matches_filter(d, query):
+                new_doc = copy.deepcopy(replacement)
+                new_doc["_id"] = d.get("_id", str(uuid.uuid4()))
+                self._docs[i] = new_doc
+                self._notify()
+                return UpdateResult(1)
+        if upsert:
+            await self.insert_one(replacement)
+            return UpdateResult(1)
+        return UpdateResult(0)
+
     async def delete_one(self, query: Dict[str, Any]) -> DeleteResult:
         for idx, d in enumerate(self._docs):
             if _matches_filter(d, query):

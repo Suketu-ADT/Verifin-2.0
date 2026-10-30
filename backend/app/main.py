@@ -24,6 +24,7 @@ from app.observability import metrics
 from app.observability.context import request_id_var
 from app.observability.middleware import ObservabilityMiddleware
 from app.security.rate_limit import RateLimitMiddleware
+from app.services.job_runner import job_runner
 from app.utils.logging import logger
 
 
@@ -37,11 +38,13 @@ async def lifespan(app: FastAPI):
     
     # Connect to MongoDB
     await connect_to_mongo()
-    
+    await job_runner.recover_orphans()
+
     yield
-    
+
     # Graceful shutdown
     logger.info("Shutting down VERIFIN 2.0 backend application...")
+    await job_runner.shutdown()
     await close_mongo_connection()
     logger.info("Shutdown complete.")
 

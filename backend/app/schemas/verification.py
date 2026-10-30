@@ -3,6 +3,7 @@ Verification API schemas matching frontend VerificationResultResponse contract.
 Enhanced with Hybrid RAG scores, Hallucination Diagnostics, and Multi-Hop synthesis traces.
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -88,3 +89,21 @@ class VerificationResultResponse(BaseModel):
     risk_level: str
     status: str
     claims: List[ClaimResponse] = Field(default_factory=list)
+
+
+class VerificationJobResponse(BaseModel):
+    """Returned with 202 when a verification is queued; poll ``status_url`` until it is completed or failed."""
+
+    id: str
+    status: str
+    status_url: str
+    results_url: str
+
+
+class VerificationStatusResponse(BaseModel):
+    id: str
+    document_id: str
+    status: str  # queued, running, completed, failed
+    error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
