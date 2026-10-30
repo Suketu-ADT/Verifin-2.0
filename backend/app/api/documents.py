@@ -2,9 +2,10 @@
 Document upload and management endpoints. Every document belongs to the caller's tenant.
 """
 
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Query, UploadFile
+from pydantic import BaseModel, Field
 from app.repositories.document_repository import DocumentRepository
 from app.schemas.document import DocumentResponse, DocumentExtractFactsResponse
 from app.services.audit_service import audit
@@ -12,6 +13,7 @@ from app.security import Principal, require_role
 from app.security.access import authorize_document
 from app.security.rate_limit import limit_heavy
 from app.services.document_service import DocumentService
+from app.services.edgar_service import EdgarService
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -45,6 +47,48 @@ async def upload_document(
     await audit.record_for(principal, "document.upload", resource_type="document", resource_id=result.id,
                            details={"filename": result.filename, "size": getattr(result, "size", None)})
     return result
+
+
+class EdgarImportRequest(BaseModel):
+    cik: str = Field(..., pattern=r"^\d{1,10}$")
+    accession: str = Field(..., pattern=r"^\d{10}-\d{2}-\d{6}$")
+    primary_document: str = Field(..., min_length=5, max_length=130)
+    company: Optional[str] = Field(None, max_length=120)
+    form: Optional[str] = Field(None, max_length=10)
+
+
+def get_edgar_service() -> EdgarService:
+    return EdgarService()
+
+
+@router.get("/edgar/filings")
+async def search_edgar_filings(
+    query: str = Query(..., min_length=1, max_length=10, description="Ticker symbol or CIK"),
+    form: List[str] = Query(["10-K", "10-Q"], description="Form types"),
+    principal: Principal = Depends(require_role("analyst")),
+    edgar: EdgarService = Depends(get_edgar_service),
+) -> dict:
+    """Recent filings of a public company, from SEC EDGAR."""
+    return await edgar.list_filings(query, form)
+
+
+@router.post("/edgar/import", response_model=DocumentResponse, dependencies=[Depends(limit_heavy)])
+async def import_edgar_filing(
+    body: EdgarImportRequest,
+    principal: Principal = Depends(require_role("analyst")),
+    edgar: EdgarService = Depends(get_edgar_service),
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentResponse:
+    """Downloads one filing from SEC EDGAR and stores it as a document of the caller's organisation."""
+    label = " ".join(p for p in (body.company, body.form, body.accession) if p)
+    pdf = await edgar.fetch_filing_pdf(body.cik, body.accession, body.primary_document, title=label)
+    safe_name = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in label)[:100] or "edgar-filing"
+    document = await service.process_and_save_upload(
+        file=edgar.as_upload(pdf, f"{safe_name}.pdf"), user_id=principal.user_id, tenant_id=principal.tenant_id
+    )
+    await audit.record_for(principal, "document.import_edgar", resource_type="document", resource_id=document.id,
+                           details={"cik": body.cik, "accession": body.accession, "form": body.form})
+    return document
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)

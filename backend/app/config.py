@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     job_queue_limit: int = 50  # queued jobs per instance before new ones are refused
     batch_max_items: int = 25  # statements accepted in one batch request
 
+    # ── SEC EDGAR import ─────────────────────────────────────────────────
+    edgar_user_agent: Optional[str] = None  # required by the SEC: "Organisation contact@example.com"
+    edgar_max_bytes: int = 30_000_000
+
     # ── Data store ───────────────────────────────────────────────────────
     # Local development may fall back to an in-memory database when MongoDB is unreachable. Production never does:
     # it refuses to start, so an outage is visible instead of silently losing data on restart.
