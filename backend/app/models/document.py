@@ -14,6 +14,7 @@ class DocumentModel(BaseModel):
     filename: str
     file_type: str = "pdf"
     size: int
+    sha256: Optional[str] = None  # SHA-256 of the uploaded file, so a result names the exact bytes it checked
     page_count: int = 1
     file_path: str
     status: str = "uploaded"

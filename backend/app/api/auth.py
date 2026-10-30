@@ -23,6 +23,7 @@ from app.models.api_key import ApiKeyModel
 from app.models.user import UserModel
 from app.repositories.api_key_repository import ApiKeyRepository
 from app.repositories.user_repository import UserRepository
+from app.services.audit_service import audit
 from app.security.passwords import DUMMY_HASH, hash_password, verify_password
 from app.security.principal import ANONYMOUS, ROLE_RANK, Principal, get_principal, hash_api_key, require_role
 from app.security.tokens import create_access_token
@@ -167,6 +168,8 @@ async def register(body: RegisterRequest) -> TokenResponse:
     _check_password_strength(body.password)
     user = await _new_user(body.email, body.password, body.name, tenant_id=str(uuid.uuid4()), role="admin")
     logger.info(f"Registered new tenant {user.tenant_id} with admin {user.id}")
+    await audit.record("auth.register", tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
+                       actor_role=user.role, resource_type="user", resource_id=user.id)
     return _token_response(user)
 
 
@@ -177,6 +180,11 @@ async def login(body: Credentials) -> TokenResponse:
     stored = user.password_hash if user and user.password_hash else DUMMY_HASH
     valid = await run_in_threadpool(verify_password, body.password, stored)
     if not (user and valid and user.is_active):
+        await audit.record(
+            "auth.login", tenant_id=user.tenant_id if user else "_unscoped", outcome="denied",
+            actor_id=user.id if user else "unknown", actor_email=user.email if user else None,
+            details={"reason": "inactive" if user and valid else "bad_credentials"},
+        )
         # same response for unknown email, wrong password and disabled account
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -184,6 +192,8 @@ async def login(body: Credentials) -> TokenResponse:
             headers={"WWW-Authenticate": "Bearer"},
         )
     await repo.update_user(user.id, {"last_login_at": datetime.now(timezone.utc)})
+    await audit.record("auth.login", tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
+                       actor_role=user.role, resource_type="user", resource_id=user.id)
     return _token_response(user)
 
 
@@ -213,6 +223,8 @@ async def create_user(body: CreateUserRequest, principal: Principal = Depends(re
     _check_password_strength(body.password)
     user = await _new_user(body.email, body.password, body.name, tenant_id=principal.tenant_id, role=body.role)
     logger.info(f"Admin {principal.user_id} created user {user.id} ({user.role}) in tenant {principal.tenant_id}")
+    await audit.record_for(principal, "user.create", resource_type="user", resource_id=user.id,
+                           details={"role": user.role, "email": user.email})
     return UserResponse.of(user)
 
 
@@ -237,6 +249,8 @@ async def update_user(
     if fields:
         await repo.update_user(user.id, fields)
         logger.info(f"Admin {principal.user_id} updated user {user.id}: {sorted(fields)}")
+        await audit.record_for(principal, "user.update", resource_type="user", resource_id=user.id,
+                               details={"changed": {k: v for k, v in fields.items()}})
     return UserResponse.of(await repo.get_user_by_id(user.id))
 
 
@@ -262,6 +276,8 @@ async def create_api_key(
                          name=body.name, prefix=raw[:8], key_hash=hash_api_key(raw), role=body.role, expires_at=expires)
     await ApiKeyRepository().create(record)
     logger.info(f"User {principal.user_id} created API key {record.id} ({record.role})")
+    await audit.record_for(principal, "api_key.create", resource_type="api_key", resource_id=record.id,
+                           details={"name": record.name, "role": record.role, "prefix": record.prefix})
     return CreatedApiKeyResponse(**_key_response(record).model_dump(), key=raw)
 
 
@@ -277,3 +293,4 @@ async def revoke_api_key(key_id: str, principal: Principal = Depends(require_rol
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found.")
     await repo.revoke(key_id)
     logger.info(f"User {principal.user_id} revoked API key {key_id}")
+    await audit.record_for(principal, "api_key.revoke", resource_type="api_key", resource_id=key_id)

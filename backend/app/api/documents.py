@@ -7,6 +7,7 @@ from typing import List
 from fastapi import APIRouter, Depends, File, UploadFile
 from app.repositories.document_repository import DocumentRepository
 from app.schemas.document import DocumentResponse, DocumentExtractFactsResponse
+from app.services.audit_service import audit
 from app.security import Principal, require_role
 from app.security.access import authorize_document
 from app.security.rate_limit import limit_heavy
@@ -40,7 +41,10 @@ async def upload_document(
     Uploads a financial PDF document.
     Validates MIME type, extension, size, and magic bytes before saving.
     """
-    return await service.process_and_save_upload(file=file, user_id=principal.user_id, tenant_id=principal.tenant_id)
+    result = await service.process_and_save_upload(file=file, user_id=principal.user_id, tenant_id=principal.tenant_id)
+    await audit.record_for(principal, "document.upload", resource_type="document", resource_id=result.id,
+                           details={"filename": result.filename, "size": getattr(result, "size", None)})
+    return result
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
@@ -62,6 +66,7 @@ async def get_document_file(
 ):
     """Returns the raw PDF file for in-browser PDF viewing."""
     await authorize_document(document_id, principal)
+    await audit.record_for(principal, "document.download", resource_type="document", resource_id=document_id)
     return await service.get_document_file(document_id)
 
 

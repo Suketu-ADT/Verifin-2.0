@@ -2,6 +2,7 @@
 Document service handling file validation, storage abstraction, and metadata persistence.
 """
 
+import hashlib
 import io
 import re
 import uuid
@@ -180,6 +181,7 @@ class DocumentService:
             filename=filename,
             file_type="pdf",
             size=file_size,
+            sha256=hashlib.sha256(content).hexdigest(),
             page_count=page_count,
             file_path=saved_path,
             status="uploaded",

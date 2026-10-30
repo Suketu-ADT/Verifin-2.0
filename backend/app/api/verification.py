@@ -12,6 +12,7 @@ from app.schemas.verification import (
 from app.security import Principal, require_role
 from app.security.access import authorize_document
 from app.security.rate_limit import limit_heavy
+from app.services.audit_service import audit
 from app.services.job_runner import QueueFull, job_runner
 from app.services.verification_service import VerificationService
 
@@ -33,9 +34,13 @@ async def start_verification(
     when it is finished (synchronous).
     """
     await authorize_document(request.document_id.strip(), principal)
-    return await service.start_verification_session(
+    result = await service.start_verification_session(
         request=request, user_id=principal.user_id, tenant_id=principal.tenant_id
     )
+    await audit.record_for(principal, "verification.run", resource_type="verification", resource_id=result.id,
+                           details={"document_id": result.document_id, "mode": "sync", "risk": result.risk_level,
+                                    "score": result.overall_score})
+    return result
 
 
 @router.post(
@@ -65,6 +70,8 @@ async def start_verification_job(
             detail="The verification queue is full. Retry shortly.",
             headers={"Retry-After": "30"},
         )
+    await audit.record_for(principal, "verification.queue", resource_type="verification", resource_id=session.id,
+                           details={"document_id": session.document_id, "mode": "job"})
     base = str(http_request.url).rsplit("/jobs", 1)[0]
     response.headers["Location"] = f"{base}/{session.id}/status"
     return VerificationJobResponse(

@@ -9,6 +9,7 @@ from app.api.verification import router as verification_router
 from app.api.demo import router as demo_router
 from app.api.evidence import router as evidence_router
 from app.api.review import router as review_router
+from app.api.audit import router as audit_router
 
 __all__ = [
     "auth_router",
@@ -18,5 +19,6 @@ __all__ = [
     "demo_router",
     "evidence_router",
     "review_router",
+    "audit_router",
 ]
 

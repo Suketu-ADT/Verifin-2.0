@@ -25,6 +25,8 @@ VERIFICATION_SECONDS = Histogram(
 JOBS = Counter("verifin_jobs_total", "Background verification jobs by outcome", ["outcome"], registry=registry)
 JOBS_QUEUED = Gauge("verifin_jobs_queued", "Jobs waiting for a worker slot", registry=registry)
 JOBS_RUNNING = Gauge("verifin_jobs_running", "Jobs currently running", registry=registry)
+AUDIT_EVENTS = Counter("verifin_audit_events_total", "Audit events written", ["category", "outcome"], registry=registry)
+AUDIT_FAILURES = Counter("verifin_audit_write_failures_total", "Audit events that could not be stored", registry=registry)
 
 
 def render() -> tuple[bytes, str]:

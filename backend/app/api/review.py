@@ -11,6 +11,7 @@ from app.config import settings
 from app.repositories.document_repository import DocumentRepository
 from app.security import Principal, require_role
 from app.security.access import authorize_document
+from app.services.audit_service import audit
 from app.services.review_service import ReviewService
 
 router = APIRouter(prefix="/review", tags=["Review Queue"])
@@ -62,7 +63,7 @@ async def submit_review_decision(
         await authorize_document(item.document_id, principal)
     # the audit trail records the authenticated reviewer, whatever the request body claims
     reviewer = principal.user_id if principal.auth_method != "none" else request.reviewer_id
-    return await service.submit_decision(
+    result = await service.submit_decision(
         item_id=item_id,
         reviewer_id=reviewer,
         action=request.action,
@@ -70,6 +71,9 @@ async def submit_review_decision(
         corrected_value=request.corrected_value,
         corrected_text=request.corrected_text,
     )
+    await audit.record_for(principal, "review.decide", resource_type="review_item", resource_id=item_id,
+                           details={"action": request.action, "document_id": item.document_id, "reason": request.reason})
+    return result
 
 
 @router.get("/{item_id}/audit", response_model=List[ReviewAuditRecord])

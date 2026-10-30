@@ -70,6 +70,7 @@ class ClaimResponse(BaseModel):
     hallucination_risk_score: Optional[float] = None
     reasoning_summary: Optional[str] = None
     multi_hop_finding: Optional[Dict[str, Any]] = None
+    decided_by: Optional[str] = None
 
 
 class StartVerificationRequest(BaseModel):
@@ -89,6 +90,8 @@ class VerificationResultResponse(BaseModel):
     risk_level: str
     status: str
     claims: List[ClaimResponse] = Field(default_factory=list)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
 
 
 class VerificationJobResponse(BaseModel):

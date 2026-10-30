@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections import Counter
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import HTTPException, status
 
@@ -54,6 +56,7 @@ from app.services.numeric_grounding import (
     novel_entities,
 )
 from app.services.numerical_reasoner import NumericalFinding, NumericalReasonerService
+from app.services.provenance import build_provenance
 from app.services.verdict_policy import synthesize_verdict
 from app.services.retrieval_service import RetrievalService
 from app.utils.logging import logger
@@ -161,6 +164,7 @@ class VerificationService:
                 detail=f"Document with ID '{doc_id}' not found.",
             )
 
+        started_at = datetime.now(timezone.utc)
         queued = session_id is not None  # a background job already stored this session as 'queued'
         session_id = session_id or str(uuid.uuid4())
 
@@ -468,6 +472,7 @@ class VerificationService:
                 hallucination_risk_score=hallucination_risk_score,
                 reasoning_summary=reasoning_summary,
                 multi_hop_finding=multi_hop_finding_dict,
+                decided_by=verdict.decided_by,
             )
             claim_models.append(cm)
 
@@ -488,6 +493,7 @@ class VerificationService:
                     hallucination_risk_score=cm.hallucination_risk_score,
                     reasoning_summary=cm.reasoning_summary,
                     multi_hop_finding=cm.multi_hop_finding,
+                    decided_by=cm.decided_by,
                 )
             )
 
@@ -522,6 +528,15 @@ class VerificationService:
             status="completed",
             overall_score=overall_score,
             risk_level=overall_risk,
+            provenance=build_provenance(
+                document=document,
+                llm_text=llm_text,
+                retrieval_mode=getattr(request, "retrieval_mode", None),
+                started_at=started_at,
+                finished_at=datetime.now(timezone.utc),
+                claim_count=total_claims,
+                rule_counts=dict(Counter(c.decided_by or "none" for c in claim_models)),
+            ),
         )
 
         try:
@@ -552,6 +567,8 @@ class VerificationService:
             risk_level=session.risk_level,
             status=session.status,
             claims=claim_responses,
+            provenance=session.provenance,
+            created_at=session.created_at,
         )
 
     async def create_queued_session(
@@ -693,6 +710,7 @@ class VerificationService:
                     hallucination_risk_score=getattr(c, "hallucination_risk_score", None),
                     reasoning_summary=getattr(c, "reasoning_summary", None),
                     multi_hop_finding=getattr(c, "multi_hop_finding", None),
+                    decided_by=getattr(c, "decided_by", None),
                 )
             )
 
@@ -703,4 +721,6 @@ class VerificationService:
             risk_level=session.risk_level,
             status=session.status,
             claims=claim_responses,
+            provenance=session.provenance,
+            created_at=session.created_at,
         )

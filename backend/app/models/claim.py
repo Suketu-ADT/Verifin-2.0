@@ -60,4 +60,5 @@ class ClaimModel(BaseModel):
     hallucination_risk_score: Optional[float] = None
     reasoning_summary: Optional[str] = None
     multi_hop_finding: Optional[Dict[str, Any]] = None
+    decided_by: Optional[str] = None  # the verdict-policy rule that produced the status
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
