@@ -10,6 +10,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 
+from app.config import settings
 from app.models.claim import (
     ClaimModel,
     EvidenceModel,
@@ -39,7 +40,19 @@ from app.services.nli_service import (
     NLIService,
     get_nli_service,
 )
-from app.services.numerical_reasoner import NumericalReasonerService
+from app.services.numeric_grounding import (
+    CONFLICT,
+    GROUNDED,
+    NO_FIGURES,
+    UNGROUNDED,
+    GroundingResult,
+    check_period,
+    document_vocabulary,
+    ground_figures,
+    novel_entities,
+)
+from app.services.numerical_reasoner import NumericalFinding, NumericalReasonerService
+from app.services.verdict_policy import synthesize_verdict
 from app.services.retrieval_service import RetrievalService
 from app.utils.logging import logger
 
@@ -68,6 +81,39 @@ class VerificationService:
             numerical_reasoner=self.numerical_reasoner
         )
         self.chunk_repo = chunk_repo or ChunkRepository()
+
+    @staticmethod
+    def _passages_with_neighbours(evidence_chunks, doc_chunks) -> List[str]:
+        """Evidence text, each chunk joined to its neighbours so a sentence split by chunking stays whole."""
+        position = {c.id: i for i, c in enumerate(doc_chunks or [])}
+        passages: List[str] = []
+        for ev in evidence_chunks:
+            i = position.get(ev.chunk_id)
+            if i is None:
+                passages.append(ev.chunk_text)
+                continue
+            lo, hi = max(0, i - 1), min(len(doc_chunks), i + 2)
+            passages.append(" ".join(c.text for c in doc_chunks[lo:hi]))
+        return passages
+
+    @staticmethod
+    def _grounding_as_finding(grounding: GroundingResult) -> NumericalFinding:
+        """Express a figure-grounding result in the existing numerical-finding shape."""
+        if grounding.status == NO_FIGURES:
+            return NumericalFinding(finding_type="NO_CALCULATION", comparison_outcome="NO_CALCULATION")
+        outcome = {GROUNDED: "VALIDATED", CONFLICT: "MISMATCH", UNGROUNDED: "INSUFFICIENT_INPUTS"}[grounding.status]
+        return NumericalFinding(
+            finding_type="FIGURE_GROUNDING",
+            formula="claim figure found in evidence",
+            operands={
+                "claim_figures": grounding.claim_figures,
+                "matched": grounding.matched,
+                "unmatched": grounding.unmatched,
+                "conflicts": [{"claim": c, "evidence": e} for c, e in grounding.conflicts],
+            },
+            comparison_outcome=outcome,
+            explanation=grounding.explanation,
+        )
 
     async def start_verification_session(
         self, request: StartVerificationRequest, user_id: Optional[str] = None
@@ -137,6 +183,12 @@ class VerificationService:
             logger.warning(f"Failed to query chunks for doc {doc_id}: {exc}")
             doc_chunks = []
 
+        vocabulary = (
+            document_vocabulary(doc_id, (c.text for c in doc_chunks), len(doc_chunks))
+            if doc_chunks
+            else set()
+        )
+
         # 3. Process each claim through BM25 Hybrid Retrieval, NLI, Numerical, and Multi-Hop
         for idx, ec in enumerate(extracted_claims):
             claim_id = f"{session_id}_c{idx}"
@@ -177,7 +229,11 @@ class VerificationService:
             # If top single passage was neutral/unverified and we have multiple retrieved chunks,
             # evaluate a concatenated premise to verify cross-sentence propositions
             dp = nli_result.deciding_passage
-            if nli_result.verdict == "UNVERIFIED" and len(evidence_chunks) >= 2:
+            if (
+                settings.nli_aggregation == "legacy"
+                and nli_result.verdict == "UNVERIFIED"
+                and len(evidence_chunks) >= 2
+            ):
                 try:
                     fused_evidence_text = "\n\n".join([c.chunk_text for c in evidence_chunks[:2]])
                     fused_probs = self.nli_service.predict_probabilities([(fused_evidence_text, c_text)])
@@ -263,7 +319,7 @@ class VerificationService:
                     label=dp.verdict,
                 )
 
-            # 3d. Evaluate deterministic numerical reasoning and temporal anchoring
+            # 3d. Deterministic checks: table arithmetic, figure grounding, temporal anchoring
             ev_text = (
                 dp.evidence_text
                 if dp
@@ -273,15 +329,20 @@ class VerificationService:
             if doc_tables and c_type == "numerical":
                 table_finding = self.numerical_reasoner.verify_claim_with_tables(c_text, doc_tables)
 
-            num_finding = table_finding or self.numerical_reasoner.verify_numerical_claim(
-                claim_text=c_text,
-                evidence_text=ev_text,
-            )
-            temp_anchor = self.numerical_reasoner.verify_temporal_alignment(
-                claim_text=c_text,
-                evidence_text=ev_text,
-                doc_metadata={"filename": document.filename} if document else None,
-            )
+            grounding = ground_figures(c_text, self._passages_with_neighbours(evidence_chunks, doc_chunks))
+            if table_finding is None and grounding.status == UNGROUNDED:
+                # The figure is not stated in the evidence: it may be a derived value
+                # (growth rate, margin), so recompute it from the evidence figures.
+                derived = self.numerical_reasoner.verify_numerical_claim(c_text, ev_text)
+                if (
+                    derived.finding_type in ("PERCENTAGE_CHANGE", "MARGIN_RATIO", "ABSOLUTE_DIFFERENCE")
+                    and derived.comparison_outcome == "MISMATCH"
+                    and derived.computed_result is not None
+                ):
+                    table_finding = derived
+            novel = novel_entities(c_text, vocabulary)
+            num_finding = table_finding or self._grounding_as_finding(grounding)
+            temp_anchor = check_period(c_text, grounding.anchor_sentence)
 
             # 3e. Multi-Hop Reasoning for compound financial metrics
             multi_hop_finding_dict = None
@@ -358,62 +419,20 @@ class VerificationService:
                     explanation=temp_anchor.explanation,
                 )
 
-            # 3f. Comprehensive Hallucination Diagnostics & Decision Synthesis
-            # Requirement 7: Keep NLI verdict in status decoupled, but calibrate risk level,
-            # hallucination type, and reasoning summary.
-            claim_status = nli_result.verdict
-            claim_risk_level = nli_result.risk_level
-            hallucination_type = "NONE"
-            hallucination_risk_score = nli_result.risk_score
-            reasoning_summary_parts: List[str] = []
-
-            # Check for numerical discrepancy
-            if num_finding.comparison_outcome in ("MISMATCH", "INCONSISTENT_UNITS"):
-                hallucination_type = "NUMERICAL_DISCREPANCY"
-                claim_risk_level = "HIGH"
-                hallucination_risk_score = 0.88
-                reasoning_summary_parts.append(
-                    f"Numerical discrepancy: Reported {num_finding.reported_result} vs computed {num_finding.computed_result} ({num_finding.explanation})"
-                )
-            # Check for temporal misalignment
-            elif temp_anchor.period_match == "MISALIGNED":
-                hallucination_type = "TEMPORAL_MISALIGNMENT"
-                claim_risk_level = "HIGH"
-                hallucination_risk_score = 0.80
-                reasoning_summary_parts.append(
-                    f"Temporal misalignment: Claim references {temp_anchor.claim_period} but evidence context is {temp_anchor.evidence_period or temp_anchor.document_period}."
-                )
-            # Check for multi-hop conflict
-            elif multi_hop_finding_dict and multi_hop_finding_dict.get("has_conflict"):
-                hallucination_type = "MULTI_HOP_CALCULATION_CONFLICT"
-                claim_risk_level = "HIGH"
-                hallucination_risk_score = 0.85
-                reasoning_summary_parts.append(multi_hop_finding_dict.get("explanation", ""))
-            # Check for NLI factual contradiction
-            elif nli_result.verdict == "CONTRADICTED":
-                hallucination_type = "FACTUAL_CONTRADICTION"
-                claim_risk_level = "HIGH"
-                hallucination_risk_score = max(0.75, nli_result.confidence)
-                reasoning_summary_parts.append(nli_result.explanation)
-            # Check for unverified statement
-            elif nli_result.verdict == "UNVERIFIED":
-                hallucination_type = "UNSUPPORTED_FABRICATION"
-                claim_risk_level = "MEDIUM"
-                hallucination_risk_score = 0.50
-                reasoning_summary_parts.append(nli_result.explanation)
-            else:
-                # Verified & Supported
-                hallucination_type = "NONE"
-                claim_risk_level = "LOW"
-                hallucination_risk_score = round(max(0.05, 1.0 - nli_result.confidence), 4)
-                supp_note = nli_result.explanation
-                if num_finding.comparison_outcome == "VALIDATED":
-                    supp_note += f" Arithmetic verified: {num_finding.formula}."
-                if temp_anchor.period_match == "ALIGNED":
-                    supp_note += f" Period aligned with {temp_anchor.claim_period}."
-                reasoning_summary_parts.append(supp_note)
-
-            reasoning_summary = " ".join(reasoning_summary_parts)
+            # 3f. Final verdict: NLI combined with the deterministic checks (see verdict_policy)
+            verdict = synthesize_verdict(
+                nli=nli_result,
+                grounding=grounding,
+                novel_entities=novel,
+                table_finding=table_finding,
+                temporal=temp_anchor,
+                multi_hop=multi_hop_finding_dict,
+            )
+            claim_status = verdict.status
+            claim_risk_level = verdict.risk_level
+            hallucination_type = verdict.hallucination_type
+            hallucination_risk_score = verdict.risk_score
+            reasoning_summary = verdict.reasoning
 
             cm = ClaimModel(
                 id=claim_id,
@@ -421,7 +440,7 @@ class VerificationService:
                 claim_text=nli_result.claim_text,
                 claim_type=nli_result.claim_type,
                 status=claim_status,
-                confidence=nli_result.confidence,
+                confidence=verdict.confidence,
                 risk_level=claim_risk_level,
                 source_sentence=nli_result.source_sentence,
                 evidence=evidence_model,

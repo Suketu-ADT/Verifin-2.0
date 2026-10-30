@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     nli_batch_size: int = 16
     nli_contradiction_threshold: float = 0.50
     nli_support_threshold: float = 0.50
+    nli_aggregation: str = "aligned"  # "aligned" (sentence windows) or "legacy" (whole chunks, any contradiction wins)
+    nli_max_windows: int = 6  # candidate sentence windows scored per claim
+    nli_relevance_ratio: float = 0.75  # windows must be this close to the best alignment to decide the verdict
 
     # ── OCR & Scanned Document Ingestion (Phase 6) ──────────────────────
     ocr_enabled: bool = True

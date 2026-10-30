@@ -118,7 +118,8 @@ async def test_numerical_mismatch_is_not_counted_as_supported():
         )
     )
     claim = result.claims[0]
-    assert claim.status == VERDICT_SUPPORTED  # NLI verdict stays decoupled
+    assert claim.status == "CONTRADICTED"  # the final verdict reflects the numerical finding
+    assert claim.nli.label == VERDICT_SUPPORTED  # raw NLI output stays available
     assert claim.hallucination_type == "NUMERICAL_DISCREPANCY"
     assert result.overall_score == 0.0
     assert result.risk_level == "HIGH"

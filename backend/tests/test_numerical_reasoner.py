@@ -263,8 +263,9 @@ async def test_numerical_mismatch_keeps_nli_verdict_decoupled():
 
     assert len(result.claims) == 1
     c = result.claims[0]
-    # NLI verdict remains SUPPORTED
-    assert c.status == "SUPPORTED"
+    # Final verdict reflects the mismatch; the raw NLI output stays SUPPORTED
+    assert c.status == "CONTRADICTED"
+    assert c.nli.label == "SUPPORTED"
     # Numerical finding is distinctly MISMATCH
     assert c.numerical_finding is not None
     assert c.numerical_finding.comparison_outcome == "MISMATCH"

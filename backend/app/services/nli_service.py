@@ -12,6 +12,7 @@ import numpy as np
 
 from app.config import settings
 from app.schemas.retrieval import EvidenceChunkResponse
+from app.services.numeric_grounding import alignment, content_words, split_sentences
 from app.utils.logging import logger
 
 try:
@@ -215,6 +216,9 @@ class NLIService:
         if not cleaned_claim:
             raise ValueError("Claim text cannot be empty.")
 
+        if settings.nli_aggregation == "aligned" and evidence_chunks:
+            return self._evaluate_aligned(cleaned_claim, evidence_chunks, claim_type)
+
         # Handle missing or empty evidence retrieval
         if not evidence_chunks:
             return ClaimNLIResult(
@@ -324,6 +328,107 @@ class NLIService:
             source_sentence=cleaned_claim,
             deciding_passage=deciding,
             all_passages=passage_results,
+        )
+
+    # ── Sentence-window evaluation ───────────────────────────────────────────
+
+    def _candidate_windows(
+        self, claim: str, chunks: List[EvidenceChunkResponse]
+    ) -> List[Tuple[EvidenceChunkResponse, str, float]]:
+        """
+        Splits retrieved chunks into one- and two-sentence windows and keeps the
+        `nli_max_windows` that overlap the claim most. A short, claim-aligned premise
+        is judged far more reliably by an NLI cross-encoder than a 500-character chunk.
+        """
+        claim_words = content_words(claim)
+        seen = set()
+        scored: List[Tuple[float, int, EvidenceChunkResponse, str]] = []
+        for chunk in chunks:
+            sentences = split_sentences(chunk.chunk_text) or [chunk.chunk_text.strip()]
+            windows = list(sentences)
+            windows += [f"{a} {b}" for a, b in zip(sentences, sentences[1:])]
+            for text in windows:
+                if text in seen:
+                    continue
+                seen.add(text)
+                scored.append((alignment(claim_words, text), -len(text), chunk, text))
+        scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+        return [(c, t, a) for a, _, c, t in scored[: settings.nli_max_windows]]
+
+    def _evaluate_aligned(
+        self, claim: str, chunks: List[EvidenceChunkResponse], claim_type: str
+    ) -> ClaimNLIResult:
+        windows = self._candidate_windows(claim, chunks)
+        probs = self.predict_probabilities([(text, claim) for _, text, _ in windows])
+
+        results: List[Tuple[PassageNLIResult, float]] = []
+        for (chunk, text, align), p in zip(windows, probs):
+            ps, pc, pu = p[VERDICT_SUPPORTED], p[VERDICT_CONTRADICTED], p[VERDICT_UNVERIFIED]
+            if pc >= settings.nli_contradiction_threshold and pc > ps:
+                verdict = VERDICT_CONTRADICTED
+            elif ps >= settings.nli_support_threshold and ps > pc:
+                verdict = VERDICT_SUPPORTED
+            else:
+                verdict = VERDICT_UNVERIFIED
+            results.append((
+                PassageNLIResult(
+                    evidence_text=text,
+                    document_id=chunk.document_id,
+                    source_filename=chunk.source_filename,
+                    page_number=chunk.page_number,
+                    chunk_id=chunk.chunk_id,
+                    retrieval_score=chunk.retrieval_score,
+                    p_supported=round(ps, 4),
+                    p_contradicted=round(pc, 4),
+                    p_unverified=round(pu, 4),
+                    verdict=verdict,
+                ),
+                align,
+            ))
+
+        # Only windows nearly as claim-aligned as the best one may decide the verdict, so a
+        # neighbouring passage about a different year or segment cannot flip it.
+        best_align = max(a for _, a in results)
+        relevant = [r for r, a in results if a >= settings.nli_relevance_ratio * best_align]
+        supporting = [r for r in relevant if r.verdict == VERDICT_SUPPORTED]
+        contradicting = [r for r in relevant if r.verdict == VERDICT_CONTRADICTED]
+        top_support = max(supporting, key=lambda r: r.p_supported, default=None)
+        top_contra = max(contradicting, key=lambda r: r.p_contradicted, default=None)
+
+        if top_contra and (not top_support or top_contra.p_contradicted > top_support.p_supported):
+            deciding, verdict, confidence = top_contra, VERDICT_CONTRADICTED, top_contra.p_contradicted
+            risk_level, risk_score = "HIGH", round(max(0.70, confidence), 4)
+            explanation = (
+                f"Contradicted by evidence on page {deciding.page_number} of '{deciding.source_filename}' "
+                f"(contradiction score: {deciding.p_contradicted:.1%})."
+            )
+        elif top_support:
+            deciding, verdict, confidence = top_support, VERDICT_SUPPORTED, top_support.p_supported
+            risk_level, risk_score = "LOW", round(max(0.05, 1.0 - confidence), 4)
+            explanation = (
+                f"Supported by evidence on page {deciding.page_number} of '{deciding.source_filename}' "
+                f"(entailment score: {deciding.p_supported:.1%})."
+            )
+        else:
+            deciding = max(relevant, key=lambda r: r.p_unverified)
+            verdict, confidence = VERDICT_UNVERIFIED, deciding.p_unverified
+            risk_level, risk_score = "MEDIUM", 0.50
+            explanation = (
+                f"Unverified: the closest evidence on page {deciding.page_number} does not provide "
+                f"sufficient conclusive proof to confirm or refute the claim."
+            )
+
+        return ClaimNLIResult(
+            claim_text=claim,
+            claim_type=claim_type,
+            verdict=verdict,
+            confidence=round(confidence, 4),
+            risk_level=risk_level,
+            risk_score=risk_score,
+            explanation=explanation,
+            source_sentence=claim,
+            deciding_passage=deciding,
+            all_passages=[r for r, _ in results],
         )
 
 
