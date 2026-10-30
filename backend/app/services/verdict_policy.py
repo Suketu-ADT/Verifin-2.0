@@ -12,7 +12,7 @@ calibrated probabilities.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Collection, Dict, List, Optional
 
 from app.services.nli_service import (
     VERDICT_CONTRADICTED,
@@ -47,9 +47,10 @@ def synthesize_verdict(
     table_finding: Optional[Any] = None,
     temporal: Optional[Any] = None,
     multi_hop: Optional[Dict[str, Any]] = None,
+    disabled: Collection[str] = (),
 ) -> Verdict:
     # 1. Names that appear nowhere in the document cannot be verified.
-    if novel_entities and grounding.status != GROUNDED:
+    if novel_entities and grounding.status != GROUNDED and "entity_novelty" not in disabled:
         names = ", ".join(novel_entities[:4])
         return Verdict(
             VERDICT_UNVERIFIED, "MEDIUM", "UNSUPPORTED_FABRICATION", 0.50, 1.0,
@@ -59,7 +60,7 @@ def synthesize_verdict(
         )
 
     # 2. The evidence states a different figure for the same fact.
-    if grounding.status == CONFLICT:
+    if grounding.status == CONFLICT and "figure_conflict" not in disabled:
         return Verdict(
             VERDICT_CONTRADICTED, "HIGH", "NUMERICAL_DISCREPANCY", 0.88,
             max(grounding.anchor_overlap, 0.5),
@@ -68,7 +69,7 @@ def synthesize_verdict(
         )
 
     # 3. Arithmetic on structured tables, or on evidence figures for derived values (growth, margin).
-    if table_finding is not None and table_finding.comparison_outcome in ("MISMATCH", "INCONSISTENT_UNITS"):
+    if "table_mismatch" not in disabled and table_finding is not None and table_finding.comparison_outcome in ("MISMATCH", "INCONSISTENT_UNITS"):
         return Verdict(
             VERDICT_CONTRADICTED, "HIGH", "NUMERICAL_DISCREPANCY", 0.88, 0.9,
             f"Numerical discrepancy: Reported {table_finding.reported_result} vs computed "
@@ -77,7 +78,7 @@ def synthesize_verdict(
         )
 
     # 4. Reporting period differs from the evidence.
-    if temporal is not None and temporal.period_match == "MISALIGNED":
+    if temporal is not None and temporal.period_match == "MISALIGNED" and "temporal" not in disabled:
         return Verdict(
             VERDICT_CONTRADICTED, "HIGH", "TEMPORAL_MISALIGNMENT", 0.80, 0.8,
             f"Temporal misalignment: claim references {temporal.claim_period} but evidence context is "
@@ -101,7 +102,7 @@ def synthesize_verdict(
 
     if nli.verdict == VERDICT_UNVERIFIED:
         needed = MULTI_FIGURE_SUPPORT_MIN_OVERLAP if len(grounding.matched) >= 2 else GROUNDED_SUPPORT_MIN_OVERLAP
-        if grounding.status == GROUNDED and grounding.anchor_overlap >= needed:
+        if grounding.status == GROUNDED and grounding.anchor_overlap >= needed and "grounded_support" not in disabled:
             return Verdict(
                 VERDICT_SUPPORTED, "LOW", "NONE", round(max(0.05, 1.0 - grounding.anchor_overlap), 4),
                 grounding.anchor_overlap,

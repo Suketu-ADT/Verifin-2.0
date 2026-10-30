@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     retrieval_fusion_method: str = "rrf"  # "rrf" or "weighted"
     retrieval_hybrid_alpha: float = 0.5  # Weight for dense vs bm25 in weighted fusion (0.0 to 1.0)
     retrieval_rrf_k: int = 60  # RRF smoothing constant
+    reranker_enabled: bool = False  # rerank first-stage candidates with a cross-encoder
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_candidates: int = 15  # first-stage candidates passed to the reranker
     bm25_k1: float = 1.5  # BM25 term frequency saturation
     bm25_b: float = 0.75  # BM25 document length normalization
 
@@ -63,6 +66,9 @@ class Settings(BaseSettings):
     nli_support_threshold: float = 0.50
     nli_aggregation: str = "aligned"  # "aligned" (sentence windows) or "legacy" (whole chunks, any contradiction wins)
     nli_max_windows: int = 6  # candidate sentence windows scored per claim
+    # Comma-separated verdict checks to switch off (ablation studies only): entity_novelty, figure_conflict,
+    # table_mismatch, temporal, grounded_support, neighbours, derived_values
+    disabled_checks: str = ""
     nli_relevance_ratio: float = 0.75  # windows must be this close to the best alignment to decide the verdict
 
     # ── OCR & Scanned Document Ingestion (Phase 6) ──────────────────────

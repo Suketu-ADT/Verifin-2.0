@@ -86,7 +86,7 @@ class ClaimExtractor:
                 continue
 
             # Split line into sentences by sentence delimiters (. ! ?)
-            parts = re.split(r"(?<=[.!?])\s+", cleaned_line)
+            parts = self._split_sentences(cleaned_line)
             for p in parts:
                 p_clean = p.strip()
                 if p_clean:
@@ -128,6 +128,52 @@ class ClaimExtractor:
 
         return extracted
 
+    ABBREVIATIONS = {
+        "n.a.", "inc.", "ltd.", "co.", "corp.", "rs.", "no.", "nos.", "u.s.", "u.k.", "approx.", "vs.",
+        "mr.", "mrs.", "ms.", "dr.", "e.g.", "i.e.", "etc.", "fig.", "st.", "pvt.", "llc.", "l.p.",
+        "plc.", "sr.", "jr.", "mn.", "bn.", "est.", "avg.", "dept.", "cr.",
+    }
+
+    def _split_sentences(self, line: str) -> List[str]:
+        """Split on . ! ? followed by space, except after abbreviations, initials or before lowercase text."""
+        sentences: List[str] = []
+        start = 0
+        for m in re.finditer(r"[.!?]\s+", line):
+            end = m.start() + 1
+            word = line[start:end].split()[-1].lower() if line[start:end].split() else ""
+            nxt = line[m.end():m.end() + 1]
+            if line[m.start()] == ".":
+                if word in self.ABBREVIATIONS or re.fullmatch(r"(?:[a-z]\.){1,}", word):
+                    continue  # "Bank, N.A. were ..." or initials such as "J. P."
+                if nxt.islower():
+                    continue  # no capital letter after the full stop: not a sentence start
+            sentences.append(line[start:end])
+            start = m.end()
+        sentences.append(line[start:])
+        return [x.strip() for x in sentences if x.strip()]
+
+    LEAD_IN = re.compile(
+        r"^((?:in|for|during|as of|as at|over|at|by|since|throughout|between|within)[^,]{3,80},)\s+",
+        re.IGNORECASE,
+    )
+    PERIOD_WORD = re.compile(r"(?:year|quarter|period|month|months|fiscal|fy|half|h1|h2|q[1-4])|(?:19|20)\d\d", re.IGNORECASE)
+    VERB_START = re.compile(
+        r"^(?:\w+ed|was|were|is|are|has|have|had|will|would|can|could|expects?|reports?|delivers?|achieves?|remains?)$",
+        re.IGNORECASE,
+    )
+
+    def _with_lead_in(self, whole: str, parts: List[str]) -> List[str]:
+        """Give later parts the period lead-in of the sentence ("In FY25, ...") so each stays verifiable."""
+        m = self.LEAD_IN.match(whole)
+        if not m or not self.PERIOD_WORD.search(m.group(1)):
+            return parts
+        lead = m.group(1)
+        out = [parts[0]]
+        for part in parts[1:]:
+            has_period = bool(self.PERIOD_WORD.search(part))
+            out.append(part if has_period or part.lower().startswith(lead.lower()[:10]) else f"{lead} {part}")
+        return out
+
     def _has_verifiable_content(self, text: str) -> bool:
         """True if the text mentions a figure or a known financial metric."""
         return bool(self.NUMERICAL_PATTERN.search(text)) or any(
@@ -143,7 +189,7 @@ class ClaimExtractor:
         if ";" in sentence:
             subparts = [p.strip() for p in sentence.split(";") if len(p.strip()) >= 15]
             if len(subparts) > 1 and all(bool(self.NUMERICAL_PATTERN.search(p)) for p in subparts):
-                return subparts
+                return self._with_lead_in(sentence, subparts)
 
         # Check for conjunction patterns connecting two numerical or metric clauses
         conjunction_patterns = [
@@ -158,10 +204,12 @@ class ClaimExtractor:
             if len(parts) == 2:
                 p0, p1 = parts[0].strip(), parts[1].strip()
                 # If both parts contain verifiable numbers or metrics, split them
+                first_word = p1.split()[0].strip(",.") if p1.split() else ""
                 if (
                     len(p0) >= 20 and len(p1) >= 20
                     and bool(self.NUMERICAL_PATTERN.search(p0))
                     and bool(self.NUMERICAL_PATTERN.search(p1))
+                    and not self.VERB_START.match(first_word)  # a part without its own subject stays attached
                 ):
                     # Ensure first part ends with period
                     if not p0.endswith("."):
@@ -169,7 +217,7 @@ class ClaimExtractor:
                     # If second part lacks subject, it's safer kept as is or standalone
                     if not p1.endswith("."):
                         p1 = f"{p1}."
-                    return [p0, p1]
+                    return self._with_lead_in(sentence, [p0, p1])
 
         # Return original sentence as single atomic claim
         return [sentence]

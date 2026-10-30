@@ -128,8 +128,13 @@ class VerifinSystem:
         numerical: bool = True,
         nli_model: Optional[str] = None,
         aggregation: Optional[str] = None,
+        disabled: str = "",
+        rerank: bool = False,
+        end_to_end: bool = False,
     ):
         settings.retrieval_top_k = top_k
+        self.disabled = disabled
+        self.rerank = rerank
         self.aggregation = aggregation or settings.nli_aggregation
         self.retrieval_mode = retrieval_mode
         self.retrieval = RecordingRetrieval(
@@ -144,7 +149,7 @@ class VerifinSystem:
             document_repo=StubDocRepo(corpus),
             retrieval_service=self.retrieval,
             nli_service=nli,
-            claim_extractor=PassthroughExtractor(),
+            claim_extractor=ClaimExtractor() if end_to_end else PassthroughExtractor(),
             numerical_reasoner=NumericalReasonerService() if numerical else NoNumericalReasoner(),
             table_repo=StubTableRepo(),
             chunk_repo=StubChunkRepo(corpus),
@@ -153,6 +158,8 @@ class VerifinSystem:
     async def predict(self, item: dict) -> dict:
         start = time.perf_counter()
         settings.nli_aggregation = self.aggregation
+        settings.disabled_checks = self.disabled
+        settings.reranker_enabled = self.rerank
         result = await self.service.start_verification_session(
             StartVerificationRequest(
                 document_id=item["doc_key"],
@@ -161,10 +168,19 @@ class VerifinSystem:
             )
         )
         latency = time.perf_counter() - start
-        claim = result.claims[0]
+        if not result.claims:  # nothing was extracted, so nothing was checked
+            return {"label": "UNVERIFIABLE", "label_nli_only": "UNVERIFIABLE", "status": "NO_CLAIMS",
+                    "retrieved_pages": [], "latency_s": round(latency, 4), "n_claims": 0}
+        # the statement is as bad as its worst claim
+        severity = {"CONTRADICTED": 2, "UNVERIFIABLE": 1, "SUPPORTED": 0}
+        labels = [_label_from_hallucination(c.hallucination_type, c.status) for c in result.claims]
+        nli_labels = [_label_from_nli(c.nli.label if c.nli else c.status) for c in result.claims]
+        worst = max(range(len(labels)), key=lambda i: severity[labels[i]])
+        claim = result.claims[worst]
         return {
-            "label": _label_from_hallucination(claim.hallucination_type, claim.status),
-            "label_nli_only": _label_from_nli(claim.nli.label if claim.nli else claim.status),
+            "label": labels[worst],
+            "label_nli_only": max(nli_labels, key=lambda l: severity[l]),
+            "n_claims": len(result.claims),
             "status": claim.status,
             "hallucination_type": claim.hallucination_type,
             "confidence": claim.confidence,
@@ -291,11 +307,14 @@ def build_system(name: str, corpus: Dict[str, CorpusDoc]):
         mode = next((p for p in parts if p in ("hybrid", "dense", "bm25")), "hybrid")
         k = next((int(p[1:]) for p in parts if re.fullmatch(r"k\d+", p)), 3)
         agg = next((p.split("=")[1] for p in parts if p.startswith("agg=")), None)
+        disabled = next((p.split("=")[1].replace("+", ",") for p in parts if p.startswith("abl=")), "")
+        rerank = "rerank" in parts
+        end_to_end = "e2e" in parts
         nli_key = next((p.split("=")[1] for p in parts if p.startswith("nli=")), None)
         nli_model = {"small": None, "base": "cross-encoder/nli-deberta-v3-base",
                      "large": "cross-encoder/nli-deberta-v3-large"}.get(nli_key, nli_key)
         return VerifinSystem(corpus, retrieval_mode=mode, top_k=k, numerical=(head == "verifin"),
-                             nli_model=nli_model, aggregation=agg)
+                             nli_model=nli_model, aggregation=agg, disabled=disabled, rerank=rerank, end_to_end=end_to_end)
     if head == "number_match":
         return NumberMatchBaseline(corpus)
     if head in ("llm_norag", "llm_rag"):

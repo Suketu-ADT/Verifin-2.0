@@ -126,3 +126,13 @@ def test_all_figures_in_one_window_ground_the_claim():
 def test_same_number_with_different_unit_is_a_conflict():
     result = g.ground_figures("Revenue was $5 million for the segment.", ["The deposit was $5 billion in total."])
     assert result.status == g.CONFLICT
+
+
+# ── ablation switches ────────────────────────────────────────────────────────
+
+
+def test_disabled_check_is_skipped_by_the_verdict_policy():
+    novel = ["Zenith Holdings"]
+    assert synthesize_verdict(_nli(VERDICT_SUPPORTED), _grounding(g.NO_FIGURES), novel).decided_by == "entity_novelty"
+    skipped = synthesize_verdict(_nli(VERDICT_SUPPORTED), _grounding(g.NO_FIGURES), novel, disabled={"entity_novelty"})
+    assert skipped.decided_by == "nli"

@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 from fastapi import HTTPException, status
 
 from app.config import settings
+from app.services.reranker_service import get_reranker_service
 from app.models.chunk import DocumentChunkModel
 from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.document_repository import DocumentRepository
@@ -60,6 +61,8 @@ class RetrievalService:
         k = top_k or settings.retrieval_top_k
         if k < 1:
             k = 1
+        # first-stage depth: the reranker needs more candidates than are finally returned
+        fetch_k = max(k, settings.reranker_candidates) if settings.reranker_enabled else k
 
         retrieval_mode = (mode or settings.retrieval_mode).lower()
         if retrieval_mode not in ("hybrid", "dense", "bm25"):
@@ -124,7 +127,7 @@ class RetrievalService:
                 )
 
             # Retrieve dense candidates
-            dense_candidates = len(all_chunks) if retrieval_mode == "hybrid" else k
+            dense_candidates = len(all_chunks) if retrieval_mode == "hybrid" else fetch_k
             dense_results = await self._search_vector_or_exact(
                 query_embedding=query_embedding,
                 document_id=document_id,
@@ -135,7 +138,7 @@ class RetrievalService:
         # 5. Sparse BM25 Retrieval
         bm25_results: List[Tuple[DocumentChunkModel, float, List[str]]] = []
         if retrieval_mode in ("hybrid", "bm25"):
-            bm25_candidates = len(all_chunks) if retrieval_mode == "hybrid" else k
+            bm25_candidates = len(all_chunks) if retrieval_mode == "hybrid" else fetch_k
             bm25_results = self.bm25_service.search(
                 query=query,
                 chunks=all_chunks,
@@ -147,7 +150,7 @@ class RetrievalService:
         final_ranked_chunks: List[Dict[str, any]] = []
 
         if retrieval_mode == "dense":
-            for chunk, score in dense_results[:k]:
+            for chunk, score in dense_results[:fetch_k]:
                 final_ranked_chunks.append({
                     "chunk": chunk,
                     "retrieval_score": round(float(score), 4),
@@ -159,7 +162,7 @@ class RetrievalService:
 
         elif retrieval_mode == "bm25":
             max_bm25 = max([item[1] for item in bm25_results], default=1.0)
-            for chunk, raw_score, matched in bm25_results[:k]:
+            for chunk, raw_score, matched in bm25_results[:fetch_k]:
                 norm_score = (raw_score / max_bm25) if max_bm25 > 0 else 0.0
                 final_ranked_chunks.append({
                     "chunk": chunk,
@@ -177,8 +180,15 @@ class RetrievalService:
                 bm25_results=bm25_results,
                 alpha=hybrid_alpha,
                 method=method,
-                top_k=k,
+                top_k=fetch_k,
             )
+
+        if settings.reranker_enabled and len(final_ranked_chunks) > 1:
+            scores = get_reranker_service().score(query, [it["chunk"].text for it in final_ranked_chunks])
+            for it, s in zip(final_ranked_chunks, scores):
+                it["retrieval_score"] = round(s, 4)
+                it["retrieval_method"] = f"{it.get('retrieval_method', retrieval_mode)}+rerank"
+            final_ranked_chunks.sort(key=lambda it: it["retrieval_score"], reverse=True)
 
         # 7. Format Evidence Chunk Responses
         results: List[EvidenceChunkResponse] = []

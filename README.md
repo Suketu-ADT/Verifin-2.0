@@ -90,6 +90,21 @@ The original verdicts were worse than a lexical baseline. Root causes found by e
 
 The deterministic layer (figure grounding, entity novelty, period check, verdict policy) lifts raw NLI from 70.6 to 96.7 macro-F1. Most of the system's accuracy comes from that layer, not from the NLI model.
 
+**Leave-one-out ablation of the v4 pipeline** (each row switches off one check; dev split, n = 354; p is McNemar against the full pipeline):
+
+| Check switched off | Accuracy | Macro-F1 [95% CI] | Change | p |
+|---|---|---|---|---|
+| none (full pipeline) | 96.3 | 96.7 [94.5, 98.3] | - | - |
+| Entity novelty (names absent from the document) | 85.3 | 76.4 [70.6, 81.5] | -20.3 | < 0.001 |
+| Figure conflict (changed figure in the matching sentence) | 92.1 | 92.7 [89.8, 95.1] | -4.0 | < 0.001 |
+| Grounded support (figures all found, NLI neutral) | 94.4 | 93.9 [91.2, 96.5] | -2.8 | 0.016 |
+| Fiscal-year period check | 94.6 | 95.2 [93.0, 97.2] | -1.5 | 0.031 |
+| Neighbour-chunk expansion | 95.8 | 95.6 [92.9, 97.6] | -1.1 | 0.625 (not significant) |
+| Derived-value recomputation (growth %, margins) | 96.3 | 96.7 [94.5, 98.3] | 0.0 | 1.0 |
+| Table arithmetic | 96.3 | 96.7 [94.5, 98.3] | 0.0 | 1.0 |
+
+Entity novelty, figure conflict, grounded support and the period check each make a statistically significant difference. Derived-value recomputation and table arithmetic show **no effect on this dataset** because it contains no derived-percentage claims and no structured tables; they are covered by unit tests, not by this evaluation, and should not be credited with the measured accuracy. Neighbour expansion helps (about 1 point) but is not significant at this sample size.
+
 ### Baselines (original-system run, dev split)
 
 | System | Accuracy | Macro-F1 [95% CI] | Notes |
@@ -97,7 +112,7 @@ The deterministic layer (figure grounding, entity novelty, period check, verdict
 | `number_match` (no ML: BM25 top-3, claim numbers present in evidence) | 78.2 | 74.5 [69.1, 79.4] | scores 0% on direction flips and unit swaps |
 | v0 VERIFIN | 42.7 | 29.4 [25.7, 32.9] | worse than the heuristic |
 | **v4 VERIFIN** | **96.3** | **96.7 [94.5, 98.3]** | |
-| LLM judge, no retrieval (Qwen 2.5 7B) | *not yet run* | *not yet run* | |
+| LLM judge, no retrieval (Qwen 2.5 7B) | 19.5 | 13.7 [10.6, 17.0] | answers UNVERIFIABLE for 334 of 354 claims |
 | LLM judge with retrieved evidence (Qwen 2.5 7B) | *not yet run* | *not yet run* | |
 
 A simple number-matching heuristic reaches 74.5 macro-F1 on this dataset because numeric edits are the dominant contradiction type. This is stated openly so the jury does not read the gap to v4 as proof against all baselines. The LLM-judge baselines are the comparison that matters and are still to be run.
@@ -110,6 +125,26 @@ A simple number-matching heuristic reaches 74.5 macro-F1 on this dataset because
 | deberta-v3-base | 96.3 | 97.0 [95.4, 98.4] | 75.9 | 0.134 | 1.37 |
 
 The larger model improves raw NLI but not the final verdicts (McNemar p = 1.0), at about 1.8x the CPU latency, so small remains the default.
+
+### Cross-encoder reranker (dev split)
+
+An optional reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`, top-15 candidates, `reranker_enabled` setting) was evaluated on the dev claims that have gold evidence (n = 294, k = 3):
+
+| First stage | Page Recall@3 without → with | MRR without → with | Extra time per claim |
+|---|---|---|---|
+| BM25 | 99.0% → 100% | 0.981 → 0.993 | about 0.6 s |
+| Hybrid (default) | 96.6% → 98.0% | 0.900 → 0.971 | about 0.5 s |
+| Dense only | 88.8% → 96.9% | 0.803 → 0.961 | about 0.8 s |
+
+Paraphrased claims benefit most (hybrid MRR 0.856 → 0.968). Through the full pipeline the final verdicts barely change: macro-F1 96.7 → 96.9, a one-claim difference that is not significant. **The reranker is therefore off by default** and available as an option; the existing verdict rules already recover from most retrieval misses.
+
+### End-to-end with the real claim extractor (dev split)
+
+Most results above pass each claim to the pipeline as-is. With the production claim extractor in front (a statement is as bad as its worst extracted claim), dev macro-F1 is **95.5** (accuracy 94.9%, CI 93.4-97.5), about 1.2 points lower, within the confidence interval. The extra errors come from trailing PDF fragments (footnote markers, page headers) that the extractor splits off as separate "claims"; this is largely an artifact of how the dataset's verbatim sentences were cut from PDFs. Two real extractor defects were found and fixed using this analysis: sentence splitting at abbreviations such as "N.A." and "Rs.", and sub-claims losing their subject or reporting period when a sentence was split at ", and".
+
+### LLM-judge baseline without evidence (dev split)
+
+Qwen 2.5 7B asked to judge a claim about a named company report without seeing the report scores **13.7 macro-F1** (accuracy 19.5%). It answers UNVERIFIABLE for 334 of 354 claims, because it cannot know the report's figures. This shows that an LLM alone cannot verify claims against a document; it is not a strong baseline. The comparison with evidence supplied is reported below when available.
 
 ### Retrieval comparison (original system, dev split)
 

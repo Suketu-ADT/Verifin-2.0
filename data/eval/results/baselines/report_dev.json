@@ -1,0 +1,144 @@
+{
+ "llm_norag:qwen2.5:7b": {
+  "n": 354,
+  "errors": 0,
+  "accuracy": {
+   "point": 0.19491525423728814,
+   "ci95": [
+    0.1553672316384181,
+    0.2401129943502825
+   ]
+  },
+  "macro_f1": {
+   "point": 0.13654527613658426,
+   "ci95": [
+    0.10625047074416599,
+    0.1698644202264181
+   ]
+  },
+  "per_class": {
+   "SUPPORTED": {
+    "precision": 0.47368421052631576,
+    "recall": 0.05202312138728324,
+    "f1": 0.09375000000000001,
+    "support": 173
+   },
+   "CONTRADICTED": {
+    "precision": 1.0,
+    "recall": 0.008264462809917356,
+    "f1": 0.01639344262295082,
+    "support": 121
+   },
+   "UNVERIFIABLE": {
+    "precision": 0.17664670658682635,
+    "recall": 0.9833333333333333,
+    "f1": 0.299492385786802,
+    "support": 60
+   }
+  },
+  "confusion": {
+   "SUPPORTED": {
+    "SUPPORTED": 9,
+    "CONTRADICTED": 0,
+    "UNVERIFIABLE": 164
+   },
+   "CONTRADICTED": {
+    "SUPPORTED": 9,
+    "CONTRADICTED": 1,
+    "UNVERIFIABLE": 111
+   },
+   "UNVERIFIABLE": {
+    "SUPPORTED": 1,
+    "CONTRADICTED": 0,
+    "UNVERIFIABLE": 59
+   }
+  },
+  "flag_contradicted": {
+   "precision": 0.33432835820895523,
+   "recall": 0.9256198347107438,
+   "f1": 0.4912280701754387,
+   "false_positive_rate": 0.9570815450643777,
+   "tp": 112,
+   "fp": 223,
+   "fn": 9,
+   "tn": 10
+  },
+  "flag_any_unsupported": {
+   "precision": 0.5104477611940299,
+   "recall": 0.9447513812154696,
+   "f1": 0.6627906976744186,
+   "false_positive_rate": 0.9479768786127167,
+   "tp": 171,
+   "fp": 164,
+   "fn": 10,
+   "tn": 9
+  },
+  "by_subtype_accuracy": {
+   "CONTRADICTED/direction_flip": {
+    "n": 23,
+    "accuracy": 0.043478260869565216
+   },
+   "CONTRADICTED/number_change": {
+    "n": 61,
+    "accuracy": 0.0
+   },
+   "CONTRADICTED/period_swap": {
+    "n": 18,
+    "accuracy": 0.0
+   },
+   "CONTRADICTED/unit_swap": {
+    "n": 19,
+    "accuracy": 0.0
+   },
+   "SUPPORTED/paraphrase": {
+    "n": 56,
+    "accuracy": 0.07142857142857142
+   },
+   "SUPPORTED/verbatim": {
+    "n": 117,
+    "accuracy": 0.042735042735042736
+   },
+   "UNVERIFIABLE/acquisition": {
+    "n": 8,
+    "accuracy": 0.875
+   },
+   "UNVERIFIABLE/appointment": {
+    "n": 6,
+    "accuracy": 1.0
+   },
+   "UNVERIFIABLE/bond": {
+    "n": 12,
+    "accuracy": 1.0
+   },
+   "UNVERIFIABLE/facility": {
+    "n": 15,
+    "accuracy": 1.0
+   },
+   "UNVERIFIABLE/penalty": {
+    "n": 19,
+    "accuracy": 1.0
+   }
+  },
+  "by_tier_accuracy": {
+   "fabricated": {
+    "n": 60,
+    "accuracy": 0.9833333333333333
+   },
+   "paraphrase": {
+    "n": 94,
+    "accuracy": 0.05319148936170213
+   },
+   "verbatim": {
+    "n": 200,
+    "accuracy": 0.025
+   }
+  },
+  "retrieval": null,
+  "calibration": null,
+  "latency_s": {
+   "mean": 6.257536723163843,
+   "p50": 6.1873000000000005,
+   "p95": 7.099375
+  }
+ }
+}

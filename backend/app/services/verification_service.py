@@ -329,8 +329,14 @@ class VerificationService:
             if doc_tables and c_type == "numerical":
                 table_finding = self.numerical_reasoner.verify_claim_with_tables(c_text, doc_tables)
 
-            grounding = ground_figures(c_text, self._passages_with_neighbours(evidence_chunks, doc_chunks))
-            if table_finding is None and grounding.status == UNGROUNDED:
+            disabled = {x.strip() for x in settings.disabled_checks.split(",") if x.strip()}
+            grounding_passages = (
+                [c.chunk_text for c in evidence_chunks]
+                if "neighbours" in disabled
+                else self._passages_with_neighbours(evidence_chunks, doc_chunks)
+            )
+            grounding = ground_figures(c_text, grounding_passages)
+            if table_finding is None and grounding.status == UNGROUNDED and "derived_values" not in disabled:
                 # The figure is not stated in the evidence: it may be a derived value
                 # (growth rate, margin), so recompute it from the evidence figures.
                 derived = self.numerical_reasoner.verify_numerical_claim(c_text, ev_text)
@@ -427,6 +433,7 @@ class VerificationService:
                 table_finding=table_finding,
                 temporal=temp_anchor,
                 multi_hop=multi_hop_finding_dict,
+                disabled=disabled,
             )
             claim_status = verdict.status
             claim_risk_level = verdict.risk_level
