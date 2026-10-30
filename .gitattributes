@@ -2,3 +2,5 @@
 *.pdf binary
 *.png binary
 *.zip binary
+# Shell scripts must keep LF line endings even on Windows checkouts, or bash fails on the carriage returns.
+*.sh text eol=lf
