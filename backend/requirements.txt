@@ -25,10 +25,11 @@ python-dotenv>=1.0.1
 # Document Inspection
 pypdf>=5.0.0
 
-# Phase 2: Embeddings & Evidence Retrieval
+# Phase 2: Embeddings & Evidence Retrieval (BM25 Hybrid RAG)
 sentence-transformers>=3.0.0
 torch>=2.2.0
 numpy>=1.26.0
+rank-bm25>=0.2.2
 
 # Testing & Client
 pytest>=8.0.0

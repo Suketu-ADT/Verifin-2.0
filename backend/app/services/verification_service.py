@@ -1,12 +1,13 @@
 """
-Verification service handling claim extraction, evidence retrieval,
-Cross-Encoder NLI verification, and session persistence in MongoDB Atlas.
+Verification service handling claim extraction, hybrid evidence retrieval,
+Cross-Encoder NLI verification, numerical auditing, multi-hop reasoning,
+and session persistence in MongoDB Atlas.
 """
 
 from __future__ import annotations
 
 import uuid
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 
 from app.models.claim import (
@@ -16,7 +17,9 @@ from app.models.claim import (
     NumericalFindingModel,
     TemporalAnchorModel,
 )
+from app.models.chunk import DocumentChunkModel
 from app.models.verification import VerificationSessionModel
+from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.table_repository import TableRepository
 from app.repositories.verification_repository import VerificationRepository
@@ -30,6 +33,7 @@ from app.schemas.verification import (
     VerificationResultResponse,
 )
 from app.services.claim_extractor import ClaimExtractor
+from app.services.multi_hop_reasoner import MultiHopReasonerService
 from app.services.nli_service import (
     ClaimNLIResult,
     NLIService,
@@ -50,6 +54,8 @@ class VerificationService:
         claim_extractor: Optional[ClaimExtractor] = None,
         numerical_reasoner: Optional[NumericalReasonerService] = None,
         table_repo: Optional[TableRepository] = None,
+        multi_hop_reasoner: Optional[MultiHopReasonerService] = None,
+        chunk_repo: Optional[ChunkRepository] = None,
     ):
         self.verification_repo = verification_repo or VerificationRepository()
         self.document_repo = document_repo or DocumentRepository()
@@ -58,13 +64,18 @@ class VerificationService:
         self.claim_extractor = claim_extractor or ClaimExtractor()
         self.numerical_reasoner = numerical_reasoner or NumericalReasonerService()
         self.table_repo = table_repo or TableRepository()
+        self.multi_hop_reasoner = multi_hop_reasoner or MultiHopReasonerService(
+            numerical_reasoner=self.numerical_reasoner
+        )
+        self.chunk_repo = chunk_repo or ChunkRepository()
 
     async def start_verification_session(
         self, request: StartVerificationRequest, user_id: Optional[str] = None
     ) -> VerificationResultResponse:
         """
-        Validates request, extracts claims, retrieves document evidence,
-        executes Cross-Encoder NLI verification, and stores results in MongoDB Atlas.
+        Validates request, extracts claims, retrieves hybrid document evidence,
+        executes Cross-Encoder NLI verification, numerical reasoning, temporal checks,
+        multi-hop provenance, and stores results in MongoDB Atlas.
         """
         doc_id = request.document_id.strip()
         llm_text = request.llm_output.strip()
@@ -107,35 +118,43 @@ class VerificationService:
                 "claim_text": llm_text,
                 "claim_type": "factual",
                 "source_sentence": llm_text,
+                "target_metric": None,
             }]
 
         claim_models: List[ClaimModel] = []
         claim_responses: List[ClaimResponse] = []
 
-        # Retrieve structured tables if available for this document
+        # Retrieve structured tables and chunks if available for this document
         try:
             doc_tables = await self.table_repo.get_tables_by_document_id(doc_id)
         except Exception as exc:
             logger.warning(f"Failed to query structured tables for doc {doc_id}: {exc}")
             doc_tables = []
 
-        # 3. Process each claim through Evidence Retrieval & CrossEncoder NLI
+        try:
+            doc_chunks = await self.chunk_repo.get_chunks_by_document(doc_id)
+        except Exception as exc:
+            logger.warning(f"Failed to query chunks for doc {doc_id}: {exc}")
+            doc_chunks = []
+
+        # 3. Process each claim through BM25 Hybrid Retrieval, NLI, Numerical, and Multi-Hop
         for idx, ec in enumerate(extracted_claims):
             claim_id = f"{session_id}_c{idx}"
             c_text = ec["claim_text"]
             c_type = ec["claim_type"]
 
-            # 3a. Retrieve evidence chunks for this claim
+            # 3a. Retrieve evidence chunks for this claim using BM25 Hybrid RAG
             try:
                 evidence_chunks = await self.retrieval_service.retrieve_evidence(
                     query=c_text,
                     document_id=doc_id,
+                    mode=getattr(request, "retrieval_mode", None),
                 )
             except Exception as exc:
                 logger.warning(f"Evidence retrieval failed for claim '{c_text[:40]}': {exc}")
                 evidence_chunks = []
 
-            # 3b. Evaluate claim against retrieved evidence using NLI
+            # 3b. Evaluate claim against retrieved evidence using CrossEncoder NLI
             try:
                 nli_result = self.nli_service.evaluate_claim_against_evidence(
                     claim_text=c_text,
@@ -154,25 +173,83 @@ class VerificationService:
                     explanation=f"Inference error: {exc}",
                 )
 
+            # 3c. Multi-Passage Sliding Context Expansion
+            # If top single passage was neutral/unverified and we have multiple retrieved chunks,
+            # evaluate a concatenated premise to verify cross-sentence propositions
+            dp = nli_result.deciding_passage
+            if nli_result.verdict == "UNVERIFIED" and len(evidence_chunks) >= 2:
+                try:
+                    fused_evidence_text = "\n\n".join([c.chunk_text for c in evidence_chunks[:2]])
+                    fused_probs = self.nli_service.predict_probabilities([(fused_evidence_text, c_text)])
+                    if fused_probs:
+                        p_supp = fused_probs[0].get("SUPPORTED", 0.0)
+                        p_contra = fused_probs[0].get("CONTRADICTED", 0.0)
+                        if p_supp > 0.60 and p_supp > p_contra:
+                            nli_result.verdict = "SUPPORTED"
+                            nli_result.confidence = round(p_supp, 4)
+                            nli_result.risk_level = "LOW"
+                            nli_result.risk_score = round(max(0.05, 1.0 - p_supp), 4)
+                            nli_result.explanation = (
+                                f"Supported by multi-passage context across pages "
+                                f"{', '.join(str(c.page_number) for c in evidence_chunks[:2])}."
+                            )
+                except Exception as exc:
+                    logger.debug(f"Multi-passage expansion bypassed: {exc}")
+
+            # Evidence model with hybrid RAG traceability
             evidence_model = None
             evidence_resp = None
-            if nli_result.deciding_passage:
-                dp = nli_result.deciding_passage
+            if dp:
+                top_chunk = next((c for c in evidence_chunks if c.chunk_id == dp.chunk_id), None)
+                dense_score = top_chunk.dense_score if top_chunk else None
+                bm25_score = top_chunk.bm25_score if top_chunk else None
+                retrieval_method = top_chunk.retrieval_method if top_chunk else "hybrid"
+                matched_kw = top_chunk.matched_keywords if top_chunk else []
+
                 evidence_model = EvidenceModel(
                     text=dp.evidence_text,
                     page_number=dp.page_number,
                     similarity_score=dp.retrieval_score,
+                    dense_score=dense_score,
+                    bm25_score=bm25_score,
+                    retrieval_method=retrieval_method,
+                    matched_keywords=matched_kw,
                 )
                 evidence_resp = Evidence(
                     text=dp.evidence_text,
                     page_number=dp.page_number,
                     similarity_score=dp.retrieval_score,
+                    dense_score=dense_score,
+                    bm25_score=bm25_score,
+                    retrieval_method=retrieval_method,
+                    matched_keywords=matched_kw,
+                )
+            elif evidence_chunks:
+                # Top retrieved chunk when no deciding passage
+                c0 = evidence_chunks[0]
+                evidence_model = EvidenceModel(
+                    text=c0.chunk_text,
+                    page_number=c0.page_number,
+                    similarity_score=c0.retrieval_score,
+                    dense_score=c0.dense_score,
+                    bm25_score=c0.bm25_score,
+                    retrieval_method=c0.retrieval_method,
+                    matched_keywords=c0.matched_keywords,
+                )
+                evidence_resp = Evidence(
+                    text=c0.chunk_text,
+                    page_number=c0.page_number,
+                    similarity_score=c0.retrieval_score,
+                    dense_score=c0.dense_score,
+                    bm25_score=c0.bm25_score,
+                    retrieval_method=c0.retrieval_method,
+                    matched_keywords=c0.matched_keywords,
                 )
 
+            # NLI model
             nli_model = None
             nli_resp = None
-            if nli_result.deciding_passage:
-                dp = nli_result.deciding_passage
+            if dp:
                 nli_model = NLIModel(
                     entailment=dp.p_supported,
                     contradiction=dp.p_contradicted,
@@ -186,11 +263,11 @@ class VerificationService:
                     label=dp.verdict,
                 )
 
-            # 3c. Evaluate deterministic numerical reasoning and temporal anchoring
+            # 3d. Evaluate deterministic numerical reasoning and temporal anchoring
             ev_text = (
                 dp.evidence_text
-                if nli_result.deciding_passage
-                else (evidence_chunks[0].text if evidence_chunks else "")
+                if dp
+                else (evidence_chunks[0].chunk_text if evidence_chunks else "")
             )
             table_finding = None
             if doc_tables and c_type == "numerical":
@@ -205,6 +282,39 @@ class VerificationService:
                 evidence_text=ev_text,
                 doc_metadata={"filename": document.filename} if document else None,
             )
+
+            # 3e. Multi-Hop Reasoning for compound financial metrics
+            multi_hop_finding_dict = None
+            if "net debt" in c_text.lower() and (doc_chunks or doc_tables):
+                try:
+                    # Extract reported net debt figure from claim
+                    num_entities = self.numerical_reasoner.extract_numeric_entities(c_text)
+                    reported_val = (
+                        num_entities[0].normalized_value
+                        if num_entities and not num_entities[0].is_percentage
+                        else None
+                    )
+                    mh_periods = self.numerical_reasoner.extract_temporal_periods(c_text)
+                    target_yr = str(mh_periods[0].year) if mh_periods and mh_periods[0].year else None
+
+                    mh_result = self.multi_hop_reasoner.compute_net_debt(
+                        claim_reported_net_debt=reported_val,
+                        target_period=target_yr,
+                        chunks=doc_chunks or ([
+                            DocumentChunkModel(
+                                id=c.chunk_id,
+                                document_id=c.document_id,
+                                page_number=c.page_number,
+                                chunk_index=i,
+                                text=c.chunk_text,
+                            )
+                            for i, c in enumerate(evidence_chunks)
+                        ]),
+                        tables=doc_tables,
+                    )
+                    multi_hop_finding_dict = mh_result.model_dump()
+                except Exception as exc:
+                    logger.warning(f"Multi-hop synthesis skipped: {exc}")
 
             num_model = None
             num_resp = None
@@ -248,19 +358,80 @@ class VerificationService:
                     explanation=temp_anchor.explanation,
                 )
 
+            # 3f. Comprehensive Hallucination Diagnostics & Decision Synthesis
+            # Requirement 7: Keep NLI verdict in status decoupled, but calibrate risk level,
+            # hallucination type, and reasoning summary.
+            claim_status = nli_result.verdict
+            claim_risk_level = nli_result.risk_level
+            hallucination_type = "NONE"
+            hallucination_risk_score = nli_result.risk_score
+            reasoning_summary_parts: List[str] = []
+
+            # Check for numerical discrepancy
+            if num_finding.comparison_outcome in ("MISMATCH", "INCONSISTENT_UNITS"):
+                hallucination_type = "NUMERICAL_DISCREPANCY"
+                claim_risk_level = "HIGH"
+                hallucination_risk_score = 0.88
+                reasoning_summary_parts.append(
+                    f"Numerical discrepancy: Reported {num_finding.reported_result} vs computed {num_finding.computed_result} ({num_finding.explanation})"
+                )
+            # Check for temporal misalignment
+            elif temp_anchor.period_match == "MISALIGNED":
+                hallucination_type = "TEMPORAL_MISALIGNMENT"
+                claim_risk_level = "HIGH"
+                hallucination_risk_score = 0.80
+                reasoning_summary_parts.append(
+                    f"Temporal misalignment: Claim references {temp_anchor.claim_period} but evidence context is {temp_anchor.evidence_period or temp_anchor.document_period}."
+                )
+            # Check for multi-hop conflict
+            elif multi_hop_finding_dict and multi_hop_finding_dict.get("has_conflict"):
+                hallucination_type = "MULTI_HOP_CALCULATION_CONFLICT"
+                claim_risk_level = "HIGH"
+                hallucination_risk_score = 0.85
+                reasoning_summary_parts.append(multi_hop_finding_dict.get("explanation", ""))
+            # Check for NLI factual contradiction
+            elif nli_result.verdict == "CONTRADICTED":
+                hallucination_type = "FACTUAL_CONTRADICTION"
+                claim_risk_level = "HIGH"
+                hallucination_risk_score = max(0.75, nli_result.confidence)
+                reasoning_summary_parts.append(nli_result.explanation)
+            # Check for unverified statement
+            elif nli_result.verdict == "UNVERIFIED":
+                hallucination_type = "UNSUPPORTED_FABRICATION"
+                claim_risk_level = "MEDIUM"
+                hallucination_risk_score = 0.50
+                reasoning_summary_parts.append(nli_result.explanation)
+            else:
+                # Verified & Supported
+                hallucination_type = "NONE"
+                claim_risk_level = "LOW"
+                hallucination_risk_score = round(max(0.05, 1.0 - nli_result.confidence), 4)
+                supp_note = nli_result.explanation
+                if num_finding.comparison_outcome == "VALIDATED":
+                    supp_note += f" Arithmetic verified: {num_finding.formula}."
+                if temp_anchor.period_match == "ALIGNED":
+                    supp_note += f" Period aligned with {temp_anchor.claim_period}."
+                reasoning_summary_parts.append(supp_note)
+
+            reasoning_summary = " ".join(reasoning_summary_parts)
+
             cm = ClaimModel(
                 id=claim_id,
                 session_id=session_id,
                 claim_text=nli_result.claim_text,
                 claim_type=nli_result.claim_type,
-                status=nli_result.verdict,
+                status=claim_status,
                 confidence=nli_result.confidence,
-                risk_level=nli_result.risk_level,
+                risk_level=claim_risk_level,
                 source_sentence=nli_result.source_sentence,
                 evidence=evidence_model,
                 nli=nli_model,
                 numerical_finding=num_model,
                 temporal_anchor=temp_model,
+                hallucination_type=hallucination_type,
+                hallucination_risk_score=hallucination_risk_score,
+                reasoning_summary=reasoning_summary,
+                multi_hop_finding=multi_hop_finding_dict,
             )
             claim_models.append(cm)
 
@@ -277,17 +448,28 @@ class VerificationService:
                     nli=nli_resp,
                     numerical_finding=num_resp,
                     temporal_anchor=temp_resp,
+                    hallucination_type=cm.hallucination_type,
+                    hallucination_risk_score=cm.hallucination_risk_score,
+                    reasoning_summary=cm.reasoning_summary,
+                    multi_hop_finding=cm.multi_hop_finding,
                 )
             )
 
         # 4. Compute overall verification metrics
         total_claims = len(claim_models)
-        supported_count = sum(1 for c in claim_models if c.status == "SUPPORTED")
-        contradicted_count = sum(1 for c in claim_models if c.status == "CONTRADICTED")
+        # A claim only counts as clean when NLI supports it AND the numerical,
+        # temporal and multi-hop checks raised no hallucination flag; otherwise a
+        # wrong figure in an NLI-"supported" sentence would inflate the score.
+        clean_supported_count = sum(
+            1 for c in claim_models
+            if c.status == "SUPPORTED" and c.hallucination_type == "NONE"
+        )
 
-        overall_score = round((supported_count / total_claims) * 100, 1) if total_claims > 0 else 0.0
+        overall_score = round((clean_supported_count / total_claims) * 100, 1) if total_claims > 0 else 0.0
 
-        if contradicted_count > 0:
+        # HIGH risk is set per claim for contradictions, numerical mismatches,
+        # temporal misalignment and multi-hop calculation conflicts.
+        if any(c.risk_level == "HIGH" for c in claim_models):
             overall_risk = "HIGH"
         elif any(c.status == "UNVERIFIED" for c in claim_models):
             overall_risk = "MEDIUM"
@@ -363,6 +545,10 @@ class VerificationService:
                     text=c.evidence.text,
                     page_number=c.evidence.page_number,
                     similarity_score=c.evidence.similarity_score,
+                    dense_score=getattr(c.evidence, "dense_score", None),
+                    bm25_score=getattr(c.evidence, "bm25_score", None),
+                    retrieval_method=getattr(c.evidence, "retrieval_method", "hybrid"),
+                    matched_keywords=getattr(c.evidence, "matched_keywords", []),
                 )
                 if c.evidence
                 else None
@@ -415,6 +601,10 @@ class VerificationService:
                     nli=nli_resp,
                     numerical_finding=num_resp,
                     temporal_anchor=temp_resp,
+                    hallucination_type=getattr(c, "hallucination_type", None),
+                    hallucination_risk_score=getattr(c, "hallucination_risk_score", None),
+                    reasoning_summary=getattr(c, "reasoning_summary", None),
+                    multi_hop_finding=getattr(c, "multi_hop_finding", None),
                 )
             )
 

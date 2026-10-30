@@ -14,7 +14,11 @@ class EvidenceChunkResponse(BaseModel):
     page_number: int = Field(..., description="1-indexed PDF page number where text was found")
     chunk_id: str = Field(..., description="Unique chunk identifier")
     chunk_text: str = Field(..., description="Textual passage retrieved as evidence")
-    retrieval_score: float = Field(..., description="Cosine similarity score (0.0 to 1.0)")
+    retrieval_score: float = Field(..., description="Retrieval similarity score (0.0 to 1.0)")
+    dense_score: Optional[float] = Field(default=None, description="Dense vector cosine similarity score")
+    bm25_score: Optional[float] = Field(default=None, description="BM25 lexical retrieval score")
+    retrieval_method: str = Field(default="hybrid", description="Method used: 'hybrid', 'dense', or 'bm25'")
+    matched_keywords: List[str] = Field(default_factory=list, description="BM25 query terms matched in chunk")
     is_ocr: bool = Field(default=False, description="True if passage was extracted via OCR")
     extraction_method: str = Field(default="native", description="'native' or 'ocr'")
     ocr_confidence: Optional[float] = Field(default=None, description="Mean OCR confidence 0-100")
@@ -27,6 +31,9 @@ class EvidenceRetrievalRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Financial claim or query string")
     document_id: Optional[str] = Field(None, description="Optional target document ID to constrain search")
     top_k: Optional[int] = Field(None, ge=1, le=50, description="Number of top evidence chunks to retrieve")
+    mode: Optional[str] = Field(None, description="Retrieval mode: 'hybrid', 'dense', or 'bm25'")
+    alpha: Optional[float] = Field(None, ge=0.0, le=1.0, description="Weight for dense vs BM25 in weighted fusion")
+    fusion_method: Optional[str] = Field(None, description="Fusion algorithm: 'rrf' or 'weighted'")
 
 
 class EvidenceRetrievalResponse(BaseModel):

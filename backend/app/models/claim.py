@@ -3,7 +3,7 @@ Claim and evidence models for verification results stored in MongoDB.
 """
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -11,6 +11,10 @@ class EvidenceModel(BaseModel):
     text: str
     page_number: int
     similarity_score: float
+    dense_score: Optional[float] = None
+    bm25_score: Optional[float] = None
+    retrieval_method: Optional[str] = None
+    matched_keywords: List[str] = Field(default_factory=list)
 
 
 class NLIModel(BaseModel):
@@ -52,4 +56,8 @@ class ClaimModel(BaseModel):
     nli: Optional[NLIModel] = None
     numerical_finding: Optional[NumericalFindingModel] = None
     temporal_anchor: Optional[TemporalAnchorModel] = None
+    hallucination_type: Optional[str] = None
+    hallucination_risk_score: Optional[float] = None
+    reasoning_summary: Optional[str] = None
+    multi_hop_finding: Optional[Dict[str, Any]] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

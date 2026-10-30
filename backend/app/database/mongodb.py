@@ -2,6 +2,7 @@
 Centralized MongoDB connection management using Motor (async driver).
 """
 
+import asyncio
 from typing import Optional
 import certifi
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -84,23 +85,22 @@ async def close_mongo_connection() -> None:
 async def ping_database(timeout_seconds: float = 2.0) -> bool:
     """
     Checks if MongoDB is reachable.
-    Returns True if healthy (Atlas or active fallback), False otherwise.
+    Returns True if healthy (Atlas or active fallback), False if a live
+    MongoDB connection fails to answer a ping.
     Uses a bounded timeout to prevent health-check latency during outages.
     """
     if manager.is_fallback or manager.client is None:
         return True  # Fallback in-memory database is operational
 
     try:
-        import asyncio
-
         await asyncio.wait_for(
             manager.client.admin.command("ping"),
             timeout=timeout_seconds,
         )
         return True
-    except Exception:
-        # Fall back gracefully
-        return True
+    except Exception as exc:
+        logger.warning(f"MongoDB ping failed: {type(exc).__name__}: {str(exc)[:200]}")
+        return False
 
 
 def get_database():

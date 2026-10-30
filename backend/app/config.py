@@ -42,12 +42,18 @@ class Settings(BaseSettings):
     upload_dir: str = "./storage/uploads"
     max_upload_size_mb: int = 25
 
-    # ── Embeddings & Retrieval (Phase 2) ─────────────────────────────────
+    # ── Embeddings & Retrieval (Phase 2 & Hybrid RAG) ─────────────────────
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_dimension: int = 384
     retrieval_top_k: int = 3
     chunk_size_chars: int = 500
     chunk_overlap_chars: int = 50
+    retrieval_mode: str = "hybrid"  # "hybrid", "dense", "bm25"
+    retrieval_fusion_method: str = "rrf"  # "rrf" or "weighted"
+    retrieval_hybrid_alpha: float = 0.5  # Weight for dense vs bm25 in weighted fusion (0.0 to 1.0)
+    retrieval_rrf_k: int = 60  # RRF smoothing constant
+    bm25_k1: float = 1.5  # BM25 term frequency saturation
+    bm25_b: float = 0.75  # BM25 document length normalization
 
     # ── NLI Verification (Phase 3) ───────────────────────────────────────
     nli_model_name: str = "cross-encoder/nli-deberta-v3-small"

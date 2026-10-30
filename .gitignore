@@ -63,3 +63,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Local fallback database stores and ad-hoc debug artifacts
+data/fallback_db_store.json
+data/fallback_db_store.json.tmp
+backend/data/
+data/debug_run_output.txt
+data/frontend*.txt
+data/frontend*.pdf
+data/frontend_rendered.png
+data/sample_report_extracted.txt

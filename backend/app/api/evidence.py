@@ -47,6 +47,9 @@ async def retrieve_evidence(
         query=request.query,
         document_id=request.document_id,
         top_k=request.top_k,
+        mode=request.mode,
+        alpha=request.alpha,
+        fusion_method=request.fusion_method,
     )
     return EvidenceRetrievalResponse(
         query=request.query,
@@ -72,6 +75,9 @@ async def retrieve_document_evidence(
         query=request.query,
         document_id=document_id,
         top_k=request.top_k,
+        mode=request.mode,
+        alpha=request.alpha,
+        fusion_method=request.fusion_method,
     )
     return EvidenceRetrievalResponse(
         query=request.query,

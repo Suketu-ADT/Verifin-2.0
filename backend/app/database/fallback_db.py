@@ -103,28 +103,45 @@ def _matches_filter(doc: Dict[str, Any], query: Optional[Dict[str, Any]]) -> boo
 
 
 import json
+import os
 from pathlib import Path
 
-STORE_FILE = Path("data") / "fallback_db_store.json"
+from app.config import settings
+from app.utils.logging import logger
+
+# Anchored to the project data directory so the store location does not depend
+# on the process working directory.
+STORE_FILE = settings.data_dir / "fallback_db_store.json"
+# Earlier versions wrote relative to the CWD, i.e. backend/data when the server
+# was launched from backend/. Read it once if the new location is empty.
+LEGACY_STORE_FILE = settings.backend_root / "data" / "fallback_db_store.json"
 
 
 def _load_persisted_store() -> Dict[str, List[Dict[str, Any]]]:
-    if STORE_FILE.exists():
+    existing = [p for p in (STORE_FILE, LEGACY_STORE_FILE) if p.exists()]
+    if existing:
+        # Prefer whichever store was written most recently so no data is lost
+        # when both locations hold a copy; saves always go to STORE_FILE.
+        source = max(existing, key=lambda p: p.stat().st_mtime)
         try:
-            with open(STORE_FILE, "r", encoding="utf-8") as f:
+            with open(source, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
+        except Exception as exc:
+            logger.warning(f"Could not load fallback DB store '{source}': {exc}")
             return {}
     return {}
 
 
 def _save_persisted_store(store: Dict[str, List[Dict[str, Any]]]) -> None:
+    tmp_file = STORE_FILE.with_suffix(".json.tmp")
     try:
         STORE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(STORE_FILE, "w", encoding="utf-8") as f:
+        # Write to a temp file then swap, so a crash mid-write cannot corrupt the store.
+        with open(tmp_file, "w", encoding="utf-8") as f:
             json.dump(store, f, indent=2, default=str)
-    except Exception:
-        pass
+        os.replace(tmp_file, STORE_FILE)
+    except Exception as exc:
+        logger.warning(f"Could not persist fallback DB store: {exc}")
 
 
 class FallbackCollection:

@@ -3,6 +3,7 @@ Document service handling file validation, storage abstraction, and metadata per
 """
 
 import io
+import re
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -13,7 +14,11 @@ from app.models.document import DocumentModel
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.table_repository import TableRepository
-from app.schemas.document import DocumentResponse
+from app.schemas.document import (
+    DocumentExtractFactsResponse,
+    DocumentResponse,
+    ExtractedFactItem,
+)
 from app.services.chunking_service import ChunkingService
 from app.services.table_extractor import TableExtractionService
 from app.utils.logging import logger
@@ -60,6 +65,35 @@ class DocumentService:
         self.table_repository = table_repository or TableRepository()
         self.table_extractor = table_extractor or TableExtractionService()
 
+
+    FACT_SAMPLE_MAX_CHUNKS = 12
+    FACT_SAMPLE_MAX_PAGES = 8
+    _FACT_SIGNAL = re.compile(
+        r"(\$\s?\d|\d\s?%|\b\d[\d,]*\.?\d*\s*(?:billion|million|thousand)\b"
+        r"|\b(?:revenue|net income|operating income|earnings|margin|cash flow|debt|eps)\b)",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _select_fact_chunks(cls, chunks):
+        """
+        Picks up to FACT_SAMPLE_MAX_CHUNKS chunks with the most financial signal
+        (figures, currency, percentages, key metrics) from the whole document and
+        returns them in document order. Falls back to the leading chunks when no
+        chunk carries any signal.
+        """
+        if len(chunks) <= cls.FACT_SAMPLE_MAX_CHUNKS:
+            return list(chunks)
+
+        scored = [
+            (len(cls._FACT_SIGNAL.findall(c.text or "")), idx)
+            for idx, c in enumerate(chunks)
+        ]
+        scored.sort(key=lambda s: (-s[0], s[1]))
+        top = scored[: cls.FACT_SAMPLE_MAX_CHUNKS]
+        if top[0][0] == 0:
+            return list(chunks[: cls.FACT_SAMPLE_MAX_CHUNKS])
+        return [chunks[idx] for idx in sorted(idx for _, idx in top)]
 
     async def process_and_save_upload(
         self, file: UploadFile, user_id: Optional[str] = None
@@ -259,7 +293,6 @@ class DocumentService:
         Extracts key financial facts and statements from an uploaded document using LLM
         with fallback to deterministic claim analysis.
         """
-        from app.schemas.document import DocumentExtractFactsResponse, ExtractedFactItem
         from app.services.llm.financial_extractor import FinancialExtractorService
         from app.services.llm.factory import get_llm_provider
         from app.services.claim_extractor import ClaimExtractor
@@ -276,17 +309,21 @@ class DocumentService:
         doc_text = ""
 
         if chunks:
-            # Join top chunks (approx 2,500 - 4,000 characters) for fast, accurate extraction
-            doc_text = "\n\n".join(c.text for c in chunks[:5] if c.text and c.text.strip())
+            # Sample the most figure-dense passages from across the whole report,
+            # not just its first pages, to keep the extraction prompt small.
+            selected = self._select_fact_chunks(chunks)
+            doc_text = "\n\n".join(c.text for c in selected if c.text and c.text.strip())
 
         # If chunks empty or missing text, attempt raw text reading from disk
-        if not doc_text.strip() and Path(doc.file_path).exists():
+        if not doc_text.strip() and PdfReader is not None and Path(doc.file_path).exists():
             try:
-                import fitz
-                pdf_doc = fitz.open(doc.file_path)
-                texts = []
-                for p_idx in range(min(5, len(pdf_doc))):
-                    texts.append(pdf_doc[p_idx].get_text() or "")
+                reader = PdfReader(doc.file_path)
+                total_pages = len(reader.pages)
+                step = max(1, total_pages // self.FACT_SAMPLE_MAX_PAGES)
+                texts = [
+                    reader.pages[p_idx].extract_text() or ""
+                    for p_idx in range(0, total_pages, step)
+                ][: self.FACT_SAMPLE_MAX_PAGES]
                 doc_text = "\n\n".join(texts)
             except Exception as exc:
                 logger.warning(f"Could not extract raw text fallback from {doc.file_path}: {exc}")
