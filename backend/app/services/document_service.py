@@ -96,7 +96,7 @@ class DocumentService:
         return [chunks[idx] for idx in sorted(idx for _, idx in top)]
 
     async def process_and_save_upload(
-        self, file: UploadFile, user_id: Optional[str] = None
+        self, file: UploadFile, user_id: Optional[str] = None, tenant_id: str = "public"
     ) -> DocumentResponse:
         """
         Validates, stores, and registers a PDF document upload.
@@ -176,6 +176,7 @@ class DocumentService:
         doc_model = DocumentModel(
             id=document_id,
             user_id=user_id,
+            tenant_id=tenant_id,
             filename=filename,
             file_type="pdf",
             size=file_size,

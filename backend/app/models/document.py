@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 class DocumentModel(BaseModel):
     id: str = Field(..., description="Unique string document ID")
     user_id: Optional[str] = None
+    tenant_id: str = "public"
     filename: str
     file_type: str = "pdf"
     size: int

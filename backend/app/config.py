@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Optional
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,6 +34,30 @@ class Settings(BaseSettings):
     api_port: int = 8000
     environment: str = "development"
     debug: bool = True
+
+    # ── Authentication & authorisation ───────────────────────────────────
+    auth_enabled: bool = False  # forced on in production
+    jwt_secret: str = "dev-insecure-secret-change-me"
+    jwt_algorithm: str = "HS256"
+    jwt_issuer: str = "verifin"
+    access_token_ttl_minutes: int = 60
+    allow_registration: bool = True  # public self-service sign-up (creates a new tenant)
+    min_password_length: int = 10
+
+    # ── Rate limiting (per instance, in memory) ──────────────────────────
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: int = 120  # general API calls per principal or client address
+    rate_limit_heavy_per_minute: int = 10  # verification starts, uploads, LLM calls
+    rate_limit_auth_per_minute: int = 10  # login and registration attempts per client address
+
+    # ── Observability ────────────────────────────────────────────────────
+    log_format: str = "text"  # "text" or "json"
+    metrics_enabled: bool = True
+    metrics_token: Optional[str] = None  # when set, /metrics requires "Authorization: Bearer <token>"
+
+    # ── Background jobs ──────────────────────────────────────────────────
+    max_concurrent_jobs: int = 2  # verification jobs running at once per instance
+    job_queue_limit: int = 50  # queued jobs per instance before new ones are refused
 
     # ── Frontend & CORS ──────────────────────────────────────────────────
     frontend_url: str = "http://localhost:5173"
@@ -96,6 +120,17 @@ class Settings(BaseSettings):
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     openai_base_url: Optional[str] = None
+
+    @model_validator(mode="after")
+    def enforce_production_safety(self) -> "Settings":
+        """A production deployment must not run open, with a default secret, or in debug mode."""
+        if self.environment.lower() == "production":
+            self.auth_enabled = True
+            if self.debug:
+                raise ValueError("DEBUG must be false when ENVIRONMENT=production")
+            if len(self.jwt_secret) < 32 or self.jwt_secret == "dev-insecure-secret-change-me":
+                raise ValueError("JWT_SECRET must be set to a random value of at least 32 characters in production")
+        return self
 
     @field_validator("llm_temperature")
     @classmethod
@@ -171,11 +206,11 @@ class Settings(BaseSettings):
     def cors_origins(self) -> List[str]:
         """Allowed origins for CORS policy."""
         origins = [self.frontend_url.rstrip("/")]
-        # Ensure common localhost development ports are allowed if in dev mode
-        dev_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
-        for o in dev_origins:
-            if o not in origins:
-                origins.append(o)
+        if self.environment.lower() != "production":
+            # local development ports are never allowed in production
+            for o in ("http://localhost:5173", "http://127.0.0.1:5173"):
+                if o not in origins:
+                    origins.append(o)
         return origins
 
 

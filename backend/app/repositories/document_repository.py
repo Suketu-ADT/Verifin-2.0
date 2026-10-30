@@ -39,12 +39,14 @@ class DocumentRepository:
         return DocumentModel.model_validate(raw)
 
     async def list_documents(
-        self, user_id: Optional[str] = None, limit: int = 50
+        self, user_id: Optional[str] = None, limit: int = 50, tenant_id: Optional[str] = None
     ) -> List[DocumentModel]:
-        """Lists recent documents, optionally filtered by user_id."""
+        """Lists recent documents, optionally filtered by user_id and tenant."""
         query = {}
         if user_id:
             query["user_id"] = user_id
+        if tenant_id:
+            query["tenant_id"] = tenant_id
         cursor = self.collection.find(query).sort("created_at", -1).limit(limit)
         results: List[DocumentModel] = []
         async for item in cursor:

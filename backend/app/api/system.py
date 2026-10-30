@@ -2,13 +2,14 @@
 System health and status endpoints.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from app.security import Principal, require_role
 from app.database.mongodb import ping_database
 from app.schemas.system import HealthResponse, ServicesHealth
 from app.services.embedding_service import get_embedding_service
 from app.services.nli_service import get_nli_service
 
-router = APIRouter(prefix="/api/system", tags=["System"])
+router = APIRouter(prefix="/system", tags=["System"])
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -53,7 +54,7 @@ async def get_system_health() -> HealthResponse:
 
 
 @router.get("/llm/health")
-async def get_llm_health():
+async def get_llm_health(_: Principal = Depends(require_role("admin"))):
     """Returns safe detailed configuration status for LLM provider without exposing credentials."""
     from app.services.llm.factory import get_llm_provider
     provider = get_llm_provider()
@@ -61,7 +62,7 @@ async def get_llm_health():
 
 
 @router.post("/llm/readiness")
-async def test_llm_readiness():
+async def test_llm_readiness(_: Principal = Depends(require_role("admin"))):
     """
     Performs an explicit, bounded live readiness probe against the configured provider.
     Separated from ordinary /health to prevent unwanted inference costs or latency.

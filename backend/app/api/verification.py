@@ -7,9 +7,11 @@ from app.schemas.verification import (
     StartVerificationRequest,
     VerificationResultResponse,
 )
+from app.security import Principal, require_role
+from app.security.access import authorize_document
 from app.services.verification_service import VerificationService
 
-router = APIRouter(prefix="/api/verification", tags=["Verification"])
+router = APIRouter(prefix="/verification", tags=["Verification"])
 
 
 def get_verification_service() -> VerificationService:
@@ -19,21 +21,26 @@ def get_verification_service() -> VerificationService:
 @router.post("/start", response_model=VerificationResultResponse)
 async def start_verification(
     request: StartVerificationRequest,
+    principal: Principal = Depends(require_role("analyst")),
     service: VerificationService = Depends(get_verification_service),
 ) -> VerificationResultResponse:
     """
-    Starts a verification session for an LLM text output against a previously uploaded document.
-    Creates a queued verification job. ML pipeline execution is scheduled for Phase 2.
+    Verifies an LLM text output against a previously uploaded document and returns the result
+    when it is finished (synchronous).
     """
-    return await service.start_verification_session(request=request)
+    await authorize_document(request.document_id.strip(), principal)
+    return await service.start_verification_session(
+        request=request, user_id=principal.user_id, tenant_id=principal.tenant_id
+    )
 
 
 @router.get("/{id}/results", response_model=VerificationResultResponse)
 async def get_verification_results(
     id: str = Path(..., description="Verification session ID"),
+    principal: Principal = Depends(require_role("viewer")),
     service: VerificationService = Depends(get_verification_service),
 ) -> VerificationResultResponse:
     """
     Retrieves verification results by session ID.
     """
-    return await service.get_results(session_id=id)
+    return await service.get_results(session_id=id, tenant_id=principal.tenant_id)

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from app.schemas.demo import DemoRunResponse
 from app.services.demo_service import DemoService
 
-router = APIRouter(prefix="/api/demo", tags=["Demo"])
+router = APIRouter(prefix="/demo", tags=["Demo"])
 
 
 def get_demo_service() -> DemoService:

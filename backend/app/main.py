@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api import (
+    auth_router,
     demo_router,
     documents_router,
     evidence_router,
@@ -90,12 +91,15 @@ def create_app() -> FastAPI:
         )
 
     # ── Register API Routers ─────────────────────────────────────────────────
-    app.include_router(system_router)
-    app.include_router(documents_router)
-    app.include_router(verification_router)
-    app.include_router(demo_router)
-    app.include_router(evidence_router)
-    app.include_router(review_router)
+    # Current API: /api/v1. The unversioned /api paths are kept so existing clients keep working,
+    # and are marked deprecated.
+    resource_routers = (
+        system_router, documents_router, verification_router, demo_router, evidence_router, review_router,
+    )
+    app.include_router(auth_router, prefix="/api/v1")
+    for router in resource_routers:
+        app.include_router(router, prefix="/api/v1")
+        app.include_router(router, prefix="/api", deprecated=True)
 
     return app
 

@@ -116,7 +116,7 @@ class VerificationService:
         )
 
     async def start_verification_session(
-        self, request: StartVerificationRequest, user_id: Optional[str] = None
+        self, request: StartVerificationRequest, user_id: Optional[str] = None, tenant_id: str = "public"
     ) -> VerificationResultResponse:
         """
         Validates request, extracts claims, retrieves hybrid document evidence,
@@ -506,6 +506,7 @@ class VerificationService:
         session = VerificationSessionModel(
             id=session_id,
             user_id=user_id,
+            tenant_id=tenant_id,
             document_id=doc_id,
             llm_output=llm_text,
             status="completed",
@@ -537,7 +538,7 @@ class VerificationService:
             claims=claim_responses,
         )
 
-    async def get_results(self, session_id: str) -> VerificationResultResponse:
+    async def get_results(self, session_id: str, tenant_id: Optional[str] = None) -> VerificationResultResponse:
         """
         Retrieves verification session and associated claims from MongoDB Atlas.
         """
@@ -549,6 +550,9 @@ class VerificationService:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Database error while retrieving verification session.",
             )
+
+        if session and tenant_id is not None and session.tenant_id != tenant_id:
+            session = None  # another tenant's session is reported as missing
 
         if not session:
             logger.warning(f"Verification session not found: '{session_id}'")
