@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from app.security import Principal, require_role
 from app.security.rate_limit import limit_heavy
-from app.database.mongodb import ping_database
+from app.database.mongodb import manager, ping_database
 from app.schemas.system import HealthResponse, ServicesHealth
 from app.services.embedding_service import get_embedding_service
 from app.services.nli_service import get_nli_service
@@ -41,7 +41,8 @@ async def get_system_health() -> HealthResponse:
     Reports real embedding service status and NLI model readiness for Phase 3.
     """
     db_healthy = await ping_database()
-    db_status = "healthy" if db_healthy else "unhealthy"
+    # An in-memory fallback answers pings, but it is not the real database: say so instead of reporting a cluster.
+    db_status = "fallback" if manager.is_fallback else ("healthy" if db_healthy else "unhealthy")
 
     embedding_service = get_embedding_service()
     embedding_healthy = embedding_service.is_healthy()

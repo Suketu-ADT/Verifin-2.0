@@ -147,6 +147,10 @@ export default function SystemStatus() {
               <Badge className="bg-emerald-500/10 text-emerald-300 border-emerald-500/30 text-[10px] font-mono">
                 Cluster Ready
               </Badge>
+            ) : health?.services?.database === "fallback" ? (
+              <Badge className="bg-amber-500/10 text-amber-300 border-amber-500/30 text-[10px] font-mono">
+                In-memory
+              </Badge>
             ) : health ? (
               <Badge className="bg-rose-500/10 text-rose-300 border-rose-500/30 text-[10px] font-mono">
                 Degraded

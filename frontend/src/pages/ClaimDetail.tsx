@@ -107,7 +107,13 @@ export default function ClaimDetail() {
     )
   }
 
-  const rawStatus = (activeClaim.nli?.label || activeClaim.status || "").toUpperCase()
+  // The final verdict wins over the raw NLI label: rules such as table_mismatch can overrule an entailing sentence.
+  const finalStatus = (activeClaim.status || "").toUpperCase()
+  const rawStatus = ["SUPPORTED", "CONTRADICTED", "UNVERIFIED", "UNVERIFIABLE"].includes(finalStatus)
+    ? finalStatus
+    : (activeClaim.nli?.label || activeClaim.status || "").toUpperCase()
+  // Figures are percentages only for growth/margin style checks; table lookups compare amounts.
+  const numericUnit = /%|yoy|growth|margin|rate|delta/i.test(activeClaim.numerical_finding?.formula || "") ? "%" : ""
   const meta =
     rawStatus === "SUPPORTED" || rawStatus === "ENTAILMENT"
       ? { icon: CheckCircle2, color: "text-emerald-300", border: "border-emerald-400/30", bg: "bg-emerald-500/10", text: "Supported" }
@@ -196,19 +202,19 @@ export default function ClaimDetail() {
             {activeClaim.numerical_finding.computed_result !== null && (
               <div className="p-2 rounded bg-white/[0.02] border border-white/5">
                 <span className="text-slate-500 block text-[10px]">Computed Result</span>
-                <span className="text-white font-semibold">{activeClaim.numerical_finding.computed_result}%</span>
+                <span className="text-white font-semibold">{activeClaim.numerical_finding.computed_result}{numericUnit}</span>
               </div>
             )}
             {activeClaim.numerical_finding.reported_result !== null && (
               <div className="p-2 rounded bg-white/[0.02] border border-white/5">
                 <span className="text-slate-500 block text-[10px]">Reported Result</span>
-                <span className="text-white font-semibold">{activeClaim.numerical_finding.reported_result}%</span>
+                <span className="text-white font-semibold">{activeClaim.numerical_finding.reported_result}{numericUnit}</span>
               </div>
             )}
             {activeClaim.numerical_finding.tolerance !== null && (
               <div className="p-2 rounded bg-white/[0.02] border border-white/5">
                 <span className="text-slate-500 block text-[10px]">Rounding Tolerance</span>
-                <span className="text-slate-400">±{activeClaim.numerical_finding.tolerance}%</span>
+                <span className="text-slate-400">±{activeClaim.numerical_finding.tolerance}{numericUnit}</span>
               </div>
             )}
           </div>

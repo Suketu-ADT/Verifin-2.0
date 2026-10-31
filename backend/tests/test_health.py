@@ -131,3 +131,21 @@ async def test_health_endpoint_unavailable_nli():
         assert data["services"]["database"] == "healthy"
         assert data["services"]["embedding"] == "healthy"
         assert data["services"]["nli"] == "unavailable"
+
+
+@pytest.mark.asyncio
+async def test_health_reports_in_memory_fallback_as_such(monkeypatch):
+    """The in-memory fallback must not be reported as a healthy database cluster."""
+    from app.database import mongodb
+
+    monkeypatch.setattr(mongodb.manager, "is_fallback", True)
+    with patch("app.api.system.get_embedding_service") as mock_get_emb, \
+         patch("app.api.system.get_nli_service") as mock_get_nli:
+        mock_get_emb.return_value = MagicMock(is_healthy=MagicMock(return_value=True))
+        mock_get_nli.return_value = MagicMock(is_healthy=MagicMock(return_value=True))
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/system/health")
+
+    data = response.json()
+    assert data["services"]["database"] == "fallback"
+    assert data["status"] == "healthy"
