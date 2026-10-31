@@ -2,10 +2,11 @@ name: Deploy frontend to GitHub Pages
 
 # Needs a public repository on the GitHub Free plan, Pages enabled with "GitHub Actions" as the source, and the repository
 # variable API_BASE_URL set to the deployed API (for example https://verifin-api-xxxx-uc.a.run.app).
+# Manual until the API is deployed and the setup above is done. Then restore the push trigger:
+#   push:
+#     branches: [main]
+#     paths: ["frontend/**", ".github/workflows/deploy-pages.yml"]
 on:
-  push:
-    branches: [main]
-    paths: ["frontend/**", ".github/workflows/deploy-pages.yml"]
   workflow_dispatch:
 
 permissions:

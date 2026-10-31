@@ -52,7 +52,7 @@ created from the Admin page.
 1. The repository must be public on the Free plan.
 2. Settings, Pages: set the source to **GitHub Actions**.
 3. Settings, Secrets and variables, Actions, Variables: add `API_BASE_URL` with the Cloud Run URL printed by the script.
-4. Push to `main` (or run *Deploy frontend to GitHub Pages* manually). The site appears at
+4. Run *Deploy frontend to GitHub Pages* manually (Actions tab, Run workflow). To deploy on every push to `main` instead, restore the `push` trigger described at the top of `.github/workflows/deploy-pages.yml`. The site appears at
    `https://<github-user>.github.io/<repository>/`.
 
 ## 4. Smoke test

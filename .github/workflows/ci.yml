@@ -101,7 +101,7 @@ jobs:
           docker logs api
           exit 1
       - name: Scan the image for vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0 (pinned to the commit)
         with:
           image-ref: verifin-api:ci
           severity: CRITICAL,HIGH
