@@ -8,7 +8,7 @@ two minutes early so the instance is awake.
 ## Setup
 
 1. Sign in as an analyst or admin. Have the sample PDF at hand.
-2. Upload the PDF on the Upload page and wait for the page count to appear.
+2. On New Verification, click *Try the Northstar sample report*: it uploads the bundled PDF and fills in the statement below. (Uploading `data/VERIFIN_sample_financial_report.pdf` yourself works the same way; the claim extractor is optional and can take a minute on CPU.)
 
 ## Story in one line
 
@@ -16,7 +16,7 @@ two minutes early so the instance is awake.
 
 ## Part 1. A statement with planted errors (4 min)
 
-Open Verify, choose the Northstar document, paste:
+If you did not use the sample button, paste:
 
 > Revenue grew 22.5% year over year to USD 486.75 million in FY2025. Operating income for FY2025 was USD 74.25 million. Interest expense for FY2025 amounted to USD 9,450 million. Total assets reached USD 470.0 million at 31 March 2025. Cash and cash equivalents increased by USD 11.5 million during FY2025. Net profit decreased from USD 51.0 million in FY2024 to USD 46.35 million in FY2025. Northstar completed the acquisition of Helios Data Systems in FY2025.
 
