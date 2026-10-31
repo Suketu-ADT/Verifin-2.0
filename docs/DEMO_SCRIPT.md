@@ -49,7 +49,7 @@ download the report to show it is exportable.
 
 Use the results deck. Three figures to state:
 
-- Held-out test, 240 claims scored once: **macro-F1 95.2**; raw NLI alone 66.8.
+- Held-out test, 240 claims, rules frozen before scoring: **macro-F1 95.2** (same on pipeline 4.2, all verdicts identical); raw NLI alone 66.8.
 - A 7B LLM judge given the same evidence: 82.2, at 12 s per claim against 1.0 s.
 - The deterministic layer, not the model size, accounts for most of the gain (leave-one-out ablation).
 

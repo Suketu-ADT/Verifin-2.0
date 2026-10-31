@@ -13,7 +13,7 @@ tables in the [README](../README.md) or from the probe described below; none is 
 | Components | MiniLM sentence embeddings and BM25 (reciprocal rank fusion), `cross-encoder/nli-deberta-v3-small` (sentence windows), deterministic checks, a fixed-priority verdict policy |
 | Hardware | CPU only, about 1 s per claim |
 | Outputs | verdict, the rule that decided it (`decided_by`), evidence page and sentence, confidence |
-| Held-out result | macro-F1 95.2 [92.3, 97.7], accuracy 94.6 [91.7, 97.5], 240 claims scored once |
+| Held-out result | macro-F1 95.2 [92.3, 97.7], accuracy 94.6 [91.7, 97.5], 240 claims, rules frozen before scoring |
 
 ## Intended use
 
@@ -42,7 +42,7 @@ takes part in a verdict.
 | Corpus | six public documents: JPMorgan 2025, Reliance 2025-26, SBI 2025-26 and Tata Motors 2024-25 annual reports, an HDFC Bank AGM transcript, a Wipro AGM notice (about 16,000 chunks) |
 | Claims | 594, labels correct by construction: 282 supported (verbatim sentences or number-preserving paraphrases), 212 contradicted (one controlled edit: number, unit, period or direction), 100 unverifiable (plausible claims about invented entities) |
 | Split | by hash of (document, page): dev 354, test 240; seed 1337 |
-| Use of splits | all rules and thresholds were set on dev. The test split was scored once, then frozen |
+| Use of splits | all rules and thresholds were set on dev. The test split was scored after the rules were frozen, and re-run once on pipeline 4.2 as a regression check |
 
 The system has no trained parameters of its own; the models are used as published. The dev split guided the rules, so dev
 numbers are optimistic; quote the test numbers.
@@ -72,8 +72,12 @@ has no such claims (see below).
 ### Changes in pipeline 4.1 and 4.2
 
 Pipeline 4.0 produced the test numbers above. Version 4.1 fixed table-check defects found while rehearsing a demo (below). It
-was **not re-scored on the test split**, to keep that split a one-time measurement. It was re-scored on dev: macro-F1 96.7, 
-identical to 4.0 claim for claim (McNemar p = 1.0), as expected because the dev set contains no structured-table claims.
+was re-scored on dev: macro-F1 96.7, identical to 4.0 claim for claim (McNemar p = 1.0), as expected because the dev set
+contains no structured-table claims.
+
+After 4.2 the test split was run a second time, as a regression check and not for tuning (nothing was changed afterwards):
+macro-F1 95.2, accuracy 94.6, with all 240 verdicts identical to the 4.0 run (McNemar p = 1.0). The 95.2 therefore holds
+for the pipeline that ships. Results: `data/eval/results/v4_2/report_test.md`.
 
 Version 4.2 stops section numbers such as the "4.1" in "4.1 Revenue" being read as figures, which had put a heading number
 into explanations ("the evidence says 4.2"). Dev macro-F1 is again 96.7 with no verdict changed, and the probe below is

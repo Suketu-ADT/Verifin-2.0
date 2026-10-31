@@ -1,5 +1,5 @@
 <section id="headline" data-transition="fade" style="background:#101B2E;color:#F6F5F0;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;justify-content:space-between;gap:48px">
-<h2 style="font-family:'Libre Baskerville', Georgia, serif;font-size:64px;font-weight:700;line-height:1.15">Held-out test: 240 claims, scored once</h2>
+<h2 style="font-family:'Libre Baskerville', Georgia, serif;font-size:64px;font-weight:700;line-height:1.15">Held-out test: 240 claims, rules frozen first</h2>
 <div style="display:flex;gap:48px">
 <div style="flex:1;display:flex;flex-direction:column;gap:12px">
 <p style="font-family:'Libre Baskerville', Georgia, serif;font-size:120px;font-weight:700;line-height:1.1;color:#7FD6C4">95.2</p>
@@ -18,6 +18,6 @@
 </div>
 </div>
 <p style="font-size:32px;line-height:1.4;color:#BFCBD9">About 1 second per claim on a CPU, against 12 seconds for the LLM judge.</p>
-<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#BFCBD9">Pipeline 4.0, test split scored once after the rules were frozen on dev</p>
-<aside>Lead with the protocol: the test split was scored once, after thresholds were frozen on the dev split. VERIFIN scores 95.2 macro-F1. The LLM judge with the same evidence scores 82.2 and is twelve times slower. Raw NLI is 66.8, which is why the rule layer exists.</aside>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#BFCBD9">Rules frozen on dev, then scored on test; re-run on pipeline 4.2 with identical verdicts</p>
+<aside>Lead with the protocol: the test split was scored after thresholds were frozen on the dev split. VERIFIN scores 95.2 macro-F1. The LLM judge with the same evidence scores 82.2 and is twelve times slower. Raw NLI is 66.8, which is why the rule layer exists.</aside>
 </section>
