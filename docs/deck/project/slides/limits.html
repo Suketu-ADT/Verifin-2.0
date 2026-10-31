@@ -1,0 +1,26 @@
+<section id="limits" data-transition="fade" style="background:#F6F5F0;color:#14213D;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:48px">
+<h2 style="font-family:'Libre Baskerville', Georgia, serif;font-size:64px;font-weight:700;line-height:1.15">What to keep in mind</h2>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:20px;background:#FFFFFF;padding:40px;border:1px solid #DDDBD2;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;color:#B4411F">Known limits</h3>
+<ul style="font-size:28px;line-height:1.4;color:#14213D">
+<li>Tables and statement layouts are the weakest area</li>
+<li>A wrong direction on right figures can pass</li>
+<li>“Unverifiable” is tested on invented names only</li>
+<li>Labels are correct by construction, not human-audited</li>
+<li>Confidence is not a calibrated probability</li>
+</ul>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:20px;background:#FFFFFF;padding:40px;border:1px solid #DDDBD2;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;color:#1B7A6B">Not done yet</h3>
+<ul style="font-size:28px;line-height:1.4;color:#14213D">
+<li>Pipeline 4.1 is not re-scored on the test split</li>
+<li>No independent penetration test</li>
+<li>Cloud Run deployment never run on a real project</li>
+<li>One instance only: queue and rate limiter are in-process</li>
+</ul>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#5A6270">Full list: docs/MODEL_CARD.md and docs/THREAT_MODEL.md</p>
+<aside>Say these before anyone asks. Each item is in the model card or threat model with its evidence. The test split was scored once on pipeline 4.0; version 4.1 was checked on dev, where nothing changed, and on the probe.</aside>
+</section>

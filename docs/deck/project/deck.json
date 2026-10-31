@@ -1,0 +1,18 @@
+{
+  "v": 4,
+  "createdOnFiles": {"v": 1, "at": "2026-10-31T12:00:00Z"},
+  "lists": "css",
+  "title": "VERIFIN 2.0 results",
+  "order": ["cover", "problem", "pipeline", "headline", "comparison", "ablation", "versions", "enterprise", "probe", "limits", "close"],
+  "sections": {
+    "s1": {"description": "What VERIFIN checks and how it reaches a verdict.", "start": "cover"},
+    "s2": {"description": "Held-out results, baselines and what drives the accuracy.", "start": "headline"},
+    "s3": {"description": "What makes it operable in an organisation.", "start": "enterprise"},
+    "s4": {"description": "Where it is weak and what is not done.", "start": "probe"}
+  },
+  "faces": {
+    "ibm-plex-sans": {"family": "IBM Plex Sans", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap"},
+    "libre-baskerville": {"family": "Libre Baskerville", "href": "https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&display=swap"}
+  },
+  "designSystems": []
+}

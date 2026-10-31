@@ -1,0 +1,28 @@
+<section id="versions" data-transition="fade" style="background:#F6F5F0;color:#14213D;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:48px">
+<h2 style="font-family:'Libre Baskerville', Georgia, serif;font-size:64px;font-weight:700;line-height:1.15">From 29 to 97 on the dev split</h2>
+<div style="display:flex;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<p style="font-size:28px;font-weight:600;color:#5A6270">v0 original</p>
+<p style="font-family:'Libre Baskerville', Georgia, serif;font-size:64px;font-weight:700;color:#B4411F">29.4</p>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">Worse than a simple number-matching baseline.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<p style="font-size:28px;font-weight:600;color:#5A6270">v1</p>
+<p style="font-family:'Libre Baskerville', Georgia, serif;font-size:64px;font-weight:700;color:#14213D">93.9</p>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">Figure grounding, sentence-window NLI, verdict policy.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<p style="font-size:28px;font-weight:600;color:#5A6270">v3</p>
+<p style="font-family:'Libre Baskerville', Georgia, serif;font-size:64px;font-weight:700;color:#14213D">96.1</p>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">Local-context grounding, neighbour chunks, fiscal-year check.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<p style="font-size:28px;font-weight:600;color:#5A6270">v4</p>
+<p style="font-family:'Libre Baskerville', Georgia, serif;font-size:64px;font-weight:700;color:#1B7A6B">96.7</p>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">Multi-figure support rule. Not a significant step over v3.</p>
+</div>
+</div>
+<p style="font-size:32px;line-height:1.4;color:#14213D">The dev split guided these fixes, so those numbers are optimistic. The held-out test result, 95.2, is the one to quote.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#5A6270">Macro-F1, dev split, n = 354. Pipeline 4.1 leaves the dev score unchanged</p>
+<aside>The jump from v0 to v1 came from error analysis, not model changes: the original numerical reasoner compared claims with arbitrary numbers in the evidence and falsely flagged 80% of supported claims. v3 to v4 is not statistically significant, and v4 to v4.1 changed no dev verdict.</aside>
+</section>

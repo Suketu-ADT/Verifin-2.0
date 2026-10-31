@@ -1,0 +1,15 @@
+<section id="comparison" data-transition="fade" style="background:#F6F5F0;color:#14213D;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-family:'Libre Baskerville', Georgia, serif;font-size:64px;font-weight:700;line-height:1.15">Against its baselines, on the test split</h2>
+<table style="font-size:32px;color:#14213D">
+<tr style="background:#E7E5DC"><th style="width:52%;text-align:left">System</th><th style="width:20%;text-align:right">Accuracy</th><th style="width:28%;text-align:right">Macro-F1</th></tr>
+<tr><td style="width:52%">VERIFIN</td><td style="width:20%;text-align:right">94.6</td><td style="width:28%;text-align:right"><b>95.2</b> [92.3, 97.7]</td></tr>
+<tr><td style="width:52%">With the real claim extractor</td><td style="width:20%;text-align:right">93.8</td><td style="width:28%;text-align:right">94.2 [90.9, 97.0]</td></tr>
+<tr><td style="width:52%">LLM judge, with evidence</td><td style="width:20%;text-align:right">83.8</td><td style="width:28%;text-align:right">82.2 [76.8, 86.7]</td></tr>
+<tr><td style="width:52%">Number-matching, no ML</td><td style="width:20%;text-align:right">81.7</td><td style="width:28%;text-align:right">79.7 [73.2, 85.1]</td></tr>
+<tr><td style="width:52%">NLI output only</td><td style="width:20%;text-align:right">75.8</td><td style="width:28%;text-align:right">66.8 [59.2, 73.0]</td></tr>
+<tr><td style="width:52%">LLM judge, no document</td><td style="width:20%;text-align:right">20.0</td><td style="width:28%;text-align:right">14.6 [10.5, 18.6]</td></tr>
+</table>
+<p style="font-size:28px;line-height:1.4;color:#4A5568">The gaps to the LLM judge and the number-matching heuristic are significant (exact McNemar, p &lt; 0.001). The judge is one small local model at temperature 0, so this does not describe LLM judging in general.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#5A6270">n = 240; 95% bootstrap intervals in brackets. Source: README, held-out test results</p>
+<aside>Read the table top to bottom. The honest caveat is the last line: the judge baseline is a single 7B model with an untuned prompt. The number-matching heuristic is deliberately included because it reaches 79.7 on this dataset, as numeric edits dominate the contradictions.</aside>
+</section>

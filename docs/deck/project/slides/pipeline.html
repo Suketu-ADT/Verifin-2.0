@@ -1,0 +1,33 @@
+<section id="pipeline" data-transition="fade" style="background:#F6F5F0;color:#14213D;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:48px">
+<h2 style="font-family:'Libre Baskerville', Georgia, serif;font-size:64px;font-weight:700;line-height:1.15">Rules around a small model, no LLM in the verdict</h2>
+<div style="display:flex;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<p style="font-size:40px;font-weight:600;color:#1B7A6B">1</p>
+<h3 style="font-size:32px;font-weight:600">Split</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">A statement becomes atomic claims.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<p style="font-size:40px;font-weight:600;color:#1B7A6B">2</p>
+<h3 style="font-size:32px;font-weight:600">Retrieve</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">Dense and BM25 search, merged.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<p style="font-size:40px;font-weight:600;color:#1B7A6B">3</p>
+<h3 style="font-size:32px;font-weight:600">Read</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">NLI scores sentence windows of the evidence.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<p style="font-size:40px;font-weight:600;color:#1B7A6B">4</p>
+<h3 style="font-size:32px;font-weight:600">Check</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">Figures, names, periods, tables, derived values.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<p style="font-size:40px;font-weight:600;color:#1B7A6B">5</p>
+<h3 style="font-size:32px;font-weight:600">Decide</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">Fixed rule order; the winning rule is recorded.</p>
+</div>
+</div>
+<p style="font-size:32px;line-height:1.4;color:#14213D">The same input gives the same verdict, and nothing leaves the deployment while a statement is checked.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#5A6270">Source: docs/ARCHITECTURE.md</p>
+<aside>Walk the five steps left to right. The point to land: the NLI model alone is unreliable on numbers, so deterministic checks sit around it, and the verdict policy applies them in a fixed order. No generative model takes part in a verdict.</aside>
+</section>

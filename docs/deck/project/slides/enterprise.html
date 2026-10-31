@@ -1,0 +1,31 @@
+<section id="enterprise" data-transition="fade" style="background:#F6F5F0;color:#14213D;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:48px">
+<h2 style="font-family:'Libre Baskerville', Georgia, serif;font-size:64px;font-weight:700;line-height:1.15">Built to be operated, not only demonstrated</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">
+<div style="display:flex;flex-direction:column;gap:12px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600">Tenant isolation</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">Every record belongs to an organisation. A request for another organisation’s record returns 404.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600">Roles and keys</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">Viewer, analyst and admin. API keys are stored as hashes and can be revoked.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600">Tamper-evident audit</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">A hash chain per organisation, checked on demand.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600">Provenance</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">Each result records the pipeline version, models, settings and the document’s SHA-256.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600">Observability</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">Rate limits, health probes, Prometheus metrics and request IDs in every log line.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#FFFFFF;padding:32px;border:1px solid #DDDBD2;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600">Free-tier deployment</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5568">GitHub Pages, Cloud Run and MongoDB Atlas, with a runbook.</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#5A6270">Design and risks: docs/ARCHITECTURE.md, docs/THREAT_MODEL.md, docs/RUNBOOK.md</p>
+<aside>Each card maps to code and tests in the repository. The threat model lists what each control does not cover. The cloud deployment files are written and checked locally, but have not yet been run against a real Cloud Run project; that is stated on the last slides.</aside>
+</section>
