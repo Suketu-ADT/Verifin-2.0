@@ -23,8 +23,8 @@ import {
   ShieldCheck,
   ShieldAlert
 } from "lucide-react"
-import { allDemoClaims, demoSessions, type DemoClaim, type NLILabel } from "../lib/demoData"
 import { getVerificationResults, type ClaimResponse, type VerificationResultResponse } from "../lib/api"
+import { useHistory } from "../lib/useHistory"
 
 const verdictMeta = (label: string | undefined) => {
   const norm = (label || "").toUpperCase()
@@ -59,36 +59,54 @@ type StatusFilter = "ALL" | "SUPPORTED" | "CONTRADICTED" | "UNVERIFIABLE"
 
 export default function EvidenceExplorer() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const liveSessionId = searchParams.get("session")
+  const { sessions, loading: loadingSessions, error: sessionsError } = useHistory()
 
   const [liveClaims, setLiveClaims] = useState<ClaimResponse[]>([])
   const [loadingLive, setLoadingLive] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
-  const [selectedDemoSession, setSelectedDemoSession] = useState<string>("all")
+
+  const finished = useMemo(() => sessions.filter((x) => x.status === "completed"), [sessions])
+  const requested = searchParams.get("session")
+  // The session in the URL if it is one of ours, else the most recent finished run.
+  const sessionId = (requested && finished.some((x) => x.id === requested) ? requested : finished[0]?.id) ?? null
+  const session = finished.find((x) => x.id === sessionId) ?? null
 
   useEffect(() => {
-    if (!liveSessionId) return
+    if (!sessionId) return
+    let cancelled = false
     setLoadingLive(true)
-    getVerificationResults(liveSessionId)
+    setLoadError(null)
+    getVerificationResults(sessionId)
       .then((res: VerificationResultResponse) => {
-        setLiveClaims(res.claims || [])
-        setLoadingLive(false)
+        if (!cancelled) setLiveClaims(res.claims || [])
       })
       .catch(() => {
-        setLoadingLive(false)
+        if (!cancelled) {
+          setLiveClaims([])
+          setLoadError("Could not load this verification's claims.")
+        }
       })
-  }, [liveSessionId])
+      .finally(() => {
+        if (!cancelled) setLoadingLive(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId])
 
-  // Determine available pool
-  const rawPool = useMemo(() => {
-    if (liveSessionId && liveClaims.length > 0) {
-      return liveClaims.map((c) => ({
+  const sessionTitle = session ? `${session.document_name ?? "Document"} · ${new Date(session.created_at).toLocaleString()}` : ""
+
+  const rawPool = useMemo(
+    () =>
+      liveClaims.map((c) => ({
         id: c.id,
-        sessionId: liveSessionId,
-        sessionTitle: `Live Session (${liveSessionId.slice(0, 8)}...)`,
+        sessionId: sessionId ?? "",
+        sessionTitle,
         claim_text: c.claim_text,
         status: c.status,
+        decided_by: c.decided_by,
         nli: c.nli,
         evidence: c.evidence,
         numerical_finding: c.numerical_finding,
@@ -96,45 +114,9 @@ export default function EvidenceExplorer() {
         multi_hop_finding: c.multi_hop_finding,
         hallucination_type: c.hallucination_type,
         reasoning_summary: c.reasoning_summary,
-      }))
-    }
-
-    if (selectedDemoSession === "all") {
-      return demoSessions.flatMap((s) =>
-        s.claims.map((c) => ({
-          id: c.id,
-          sessionId: s.id,
-          sessionTitle: s.title,
-          claim_text: c.claim_text,
-          status: c.nli?.label || "UNVERIFIABLE",
-          nli: c.nli,
-          evidence: c.evidence,
-          numerical_finding: c.numerical_finding,
-          temporal_anchor: c.temporal_anchor,
-          multi_hop_finding: c.multi_hop_finding,
-          hallucination_type: c.hallucination_type,
-          reasoning_summary: c.reasoning_summary,
-        }))
-      )
-    }
-
-    const session = demoSessions.find((s) => s.id === selectedDemoSession)
-    if (!session) return []
-    return session.claims.map((c) => ({
-      id: c.id,
-      sessionId: session.id,
-      sessionTitle: session.title,
-      claim_text: c.claim_text,
-      status: c.nli?.label || "UNVERIFIABLE",
-      nli: c.nli,
-      evidence: c.evidence,
-      numerical_finding: c.numerical_finding,
-      temporal_anchor: c.temporal_anchor,
-      multi_hop_finding: c.multi_hop_finding,
-      hallucination_type: c.hallucination_type,
-      reasoning_summary: c.reasoning_summary,
-    }))
-  }, [liveSessionId, liveClaims, selectedDemoSession])
+      })),
+    [liveClaims, sessionId, sessionTitle],
+  )
 
   // Filter by query and status
   const filteredClaims = useMemo(() => {
@@ -146,10 +128,10 @@ export default function EvidenceExplorer() {
       if (!textMatch) return false
 
       if (statusFilter === "ALL") return true
-      const norm = (c.nli?.label || c.status || "").toUpperCase()
+      const norm = (c.status || "").toUpperCase()
       if (statusFilter === "SUPPORTED") return norm === "SUPPORTED" || norm === "ENTAILMENT"
       if (statusFilter === "CONTRADICTED") return norm === "CONTRADICTED" || norm === "CONTRADICTION"
-      if (statusFilter === "UNVERIFIABLE") return norm === "UNVERIFIABLE" || norm === "NEUTRAL"
+      if (statusFilter === "UNVERIFIABLE") return norm === "UNVERIFIABLE" || norm === "UNVERIFIED" || norm === "NEUTRAL"
       return true
     })
   }, [rawPool, query, statusFilter])
@@ -165,7 +147,7 @@ export default function EvidenceExplorer() {
   }, [filteredClaims, selectedId])
 
   const selected = filteredClaims.find((c) => c.id === selectedId) || filteredClaims[0]
-  const selectedMeta = verdictMeta(selected?.nli?.label || selected?.status)
+  const selectedMeta = verdictMeta(selected?.status)
 
   return (
     <motion.div 
@@ -188,38 +170,46 @@ export default function EvidenceExplorer() {
           </h1>
         </div>
 
-        {/* Live vs Demo Context Selector */}
+        {/* Verification run selector */}
         <div className="flex items-center gap-2">
-          {liveSessionId && liveClaims.length > 0 ? (
-            <Badge variant="outline" className="text-emerald-300 border-emerald-400/30 bg-emerald-500/10 font-mono text-xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse" />
-              Live Session: {liveSessionId.slice(0, 8)}
-            </Badge>
-          ) : (
+          {finished.length > 0 && (
             <div className="flex items-center gap-1.5 bg-black/40 border border-white/10 rounded-lg p-1 text-xs">
-              <span className="text-slate-400 text-[11px] px-2 font-mono">Session:</span>
+              <span className="text-slate-400 text-[11px] px-2 font-mono">Run:</span>
               <select
-                value={selectedDemoSession}
-                onChange={(e) => setSelectedDemoSession(e.target.value)}
-                className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer pr-2"
+                value={sessionId ?? ""}
+                onChange={(e) => setSearchParams({ session: e.target.value })}
+                className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer pr-2 max-w-[22rem]"
               >
-                <option value="all" className="bg-slate-900 text-white">All Sessions (14 claims)</option>
-                <option value="demo-sec-aapl-2025" className="bg-slate-900 text-white">Apple FY25 10-K</option>
-                <option value="demo-sec-msft-2024" className="bg-slate-900 text-white">Microsoft Cloud 10-K</option>
-                <option value="demo-sec-tsla-2024" className="bg-slate-900 text-white">Tesla Deliveries 10-K</option>
+                {finished.map((x) => (
+                  <option key={x.id} value={x.id} className="bg-slate-900 text-white">
+                    {(x.document_name ?? "Document") + " · " + new Date(x.created_at).toLocaleString()}
+                  </option>
+                ))}
               </select>
             </div>
           )}
         </div>
       </div>
 
-      {loadingLive ? (
+      {loadingSessions || loadingLive ? (
         <div className="flex-1 flex items-center justify-center space-y-3">
           <div className="text-center">
             <Loader2 className="h-8 w-8 text-amber-400 animate-spin mx-auto mb-2" />
             <p className="text-xs text-slate-400 font-mono">Loading hybrid retrieved evidence passages...</p>
           </div>
         </div>
+      ) : !sessionId ? (
+        <div className="flex-1 flex items-center justify-center px-6">
+          <div className="text-center space-y-3 max-w-sm">
+            <p className="text-sm text-white font-semibold">{sessionsError ?? "No finished verifications yet"}</p>
+            <p className="text-xs text-slate-400">Run a verification and its retrieved evidence appears here, claim by claim.</p>
+            <Link to="/verify" className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-semibold">
+              Start a verification <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        </div>
+      ) : loadError ? (
+        <div className="flex-1 flex items-center justify-center text-xs text-rose-300 font-mono">{loadError}</div>
       ) : (
         <div className="flex flex-1 min-h-0">
           {/* Claim list (Left Column) */}
@@ -262,7 +252,7 @@ export default function EvidenceExplorer() {
                 </div>
               ) : (
                 filteredClaims.map((c) => {
-                  const meta = verdictMeta(c.nli?.label || c.status)
+                  const meta = verdictMeta(c.status)
                   const active = c.id === selected?.id
                   return (
                     <button
@@ -324,7 +314,7 @@ export default function EvidenceExplorer() {
                       </Badge>
                     </div>
                     <span className="text-[10px] font-mono text-slate-400">
-                      Session: {selected.sessionTitle}
+                      {selected.decided_by ? `Decided by: ${selected.decided_by} · ` : ""}{selected.sessionTitle}
                     </span>
                   </div>
 

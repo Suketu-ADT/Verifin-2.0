@@ -9,8 +9,14 @@ import {
   FileUp, ShieldCheck, FileText, CheckCircle2, ArrowRight,
   FileSearch, Search, Cpu, Scale, Sparkles, Loader2, AlertCircle,
 } from "lucide-react"
-import { demoSessions } from "../lib/demoData"
 import { uploadDocument, startVerification, extractFactsFromDocument, formatBytes, type DocumentResponse } from "../lib/api"
+
+const SAMPLE_STATEMENT =
+  "Revenue grew 22.5% year over year to USD 486.75 million in FY2025. Operating income for FY2025 was USD 74.25 million. " +
+  "Interest expense for FY2025 amounted to USD 9,450 million. Total assets reached USD 470.0 million at 31 March 2025. " +
+  "Cash and cash equivalents increased by USD 11.5 million during FY2025. " +
+  "Net profit decreased from USD 51.0 million in FY2024 to USD 46.35 million in FY2025. " +
+  "Northstar completed the acquisition of Helios Data Systems in FY2025."
 
 const stages = [
   { icon: FileText, label: "Claim Decomposition" },
@@ -23,7 +29,6 @@ export default function VerificationFlow() {
   const navigate = useNavigate()
   const [fileName, setFileName] = useState<string | null>(null)
   const [answer, setAnswer] = useState("")
-  const [selectedSample, setSelectedSample] = useState<string | null>(null)
   const [retrievalMode, setRetrievalMode] = useState<string>("hybrid")
   
   // Real backend upload & verification state
@@ -57,9 +62,8 @@ export default function VerificationFlow() {
     }
   }
 
-  const handleFileSelect = async (file: File | undefined) => {
+  const handleFileSelect = async (file: File | undefined, example?: string) => {
     if (!file) return
-    setSelectedSample(null)
     setUploadError(null)
     setSubmitError(null)
     setExtractError(null)
@@ -89,8 +93,12 @@ export default function VerificationFlow() {
       })
       setUploadedDoc(doc)
       setIsUploading(false)
-      // Automatically extract key facts using LLM right after upload
-      handleExtractFacts(doc.id)
+      if (example) {
+        setAnswer(example)
+      } else {
+        // Automatically extract key facts using LLM right after upload
+        handleExtractFacts(doc.id)
+      }
     } catch (err: any) {
       setIsUploading(false)
       const detail = err?.response?.data?.detail || err?.message || "Failed to upload document."
@@ -99,21 +107,23 @@ export default function VerificationFlow() {
     }
   }
 
-  const loadSample = (sessionId: string) => {
-    const session = demoSessions.find((s) => s.id === sessionId)
-    if (!session) return
-    setUploadedDoc(null)
+  // The sample report ships with the app, so it is uploaded and verified like any other document.
+  const loadSampleReport = async () => {
     setUploadError(null)
-    setSubmitError(null)
-    setFileName(session.document)
-    setAnswer(session.llm_output)
-    setSelectedSample(sessionId)
+    try {
+      const base = ((import.meta as any).env?.BASE_URL as string | undefined) ?? "/"
+      const res = await fetch(`${base}samples/northstar-sample-report.pdf`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const file = new File([await res.blob()], "northstar-sample-report.pdf", { type: "application/pdf" })
+      await handleFileSelect(file, SAMPLE_STATEMENT)
+    } catch {
+      setUploadError("Could not load the sample report.")
+    }
   }
 
   const handleRemove = () => {
     setFileName(null)
     setUploadedDoc(null)
-    setSelectedSample(null)
     setUploadError(null)
     setSubmitError(null)
     setUploadProgress(0)
@@ -122,14 +132,8 @@ export default function VerificationFlow() {
   const handleSubmit = async () => {
     setSubmitError(null)
     
-    // Demo mode: route directly to canned demo results
-    if (selectedSample) {
-      navigate(`/verify/results/${selectedSample}`)
-      return
-    }
-
     if (!uploadedDoc) {
-      setSubmitError("Please upload a document or choose a sample.")
+      setSubmitError("Please upload a document or use the sample report.")
       return
     }
 
@@ -145,7 +149,7 @@ export default function VerificationFlow() {
     }
   }
 
-  const canSubmit = (Boolean(uploadedDoc) || Boolean(selectedSample)) && answer.trim().length > 0 && !isUploading && !isSubmitting
+  const canSubmit = Boolean(uploadedDoc) && answer.trim().length > 0 && !isUploading && !isSubmitting
 
   return (
     <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.1 } } }} className="max-w-5xl mx-auto space-y-6">
@@ -231,7 +235,7 @@ export default function VerificationFlow() {
                       </div>
                     ) : (
                       <div className="text-[11px] text-amber-300 flex items-center gap-1 mt-0.5 font-mono">
-                        <Sparkles className="h-3 w-3" /> Pre-Indexed Demo Corpus
+                        <Sparkles className="h-3 w-3" /> Not uploaded
                       </div>
                     )}
                   </div>
@@ -243,28 +247,19 @@ export default function VerificationFlow() {
             )}
 
             <div>
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Or select a pre-indexed sample session</div>
-              <motion.div variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} initial="hidden" animate="show" className="flex flex-col gap-2">
-                {demoSessions.map((s) => (
-                  <motion.button
-                    variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }}
-                    key={s.id}
-                    onClick={() => loadSample(s.id)}
-                    className={`text-left text-xs font-semibold px-3.5 py-2.5 rounded-xl border transition-all ${
-                      selectedSample === s.id
-                        ? "border-amber-400/40 bg-amber-500/15 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
-                        : "border-white/8 text-slate-300 hover:bg-white/5 hover:border-white/15"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <Sparkles className="h-3 w-3 text-amber-400" /> {s.title}
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-400">{s.claims.length} claims</span>
-                    </div>
-                  </motion.button>
-                ))}
-              </motion.div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">No report to hand?</div>
+              <button
+                onClick={() => void loadSampleReport()}
+                disabled={isUploading}
+                className="w-full text-left text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-white/8 text-slate-300 hover:bg-white/5 hover:border-white/15 transition-all disabled:opacity-50"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="h-3 w-3 text-amber-400" /> Try the Northstar sample report
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">7 claims, some wrong</span>
+                </div>
+              </button>
             </div>
           </div>
         </div>
