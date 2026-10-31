@@ -2,7 +2,7 @@
 
 About ten minutes. Every verdict below was produced by the running system on the sample report
 (`data/VERIFIN_sample_financial_report.pdf`, a synthetic seven-page annual report for "Northstar Technologies") with pipeline
-4.1 and was re-run just before this was written. Run the checks in [RUNBOOK.md](RUNBOOK.md) first; on Cloud Run, open the site
+4.2 and was re-run just before this was written. Run the checks in [RUNBOOK.md](RUNBOOK.md) first; on Cloud Run, open the site
 two minutes early so the instance is awake.
 
 ## Setup
@@ -28,7 +28,7 @@ Expected result, claim by claim:
 | Operating income was 74.25 | contradicted | `table_mismatch` | 74.25 is last year's value; FY2025 is 71.25, found in the income statement table |
 | Interest expense 9,450 million | contradicted | `table_mismatch` | wrong unit: the table says 9.45 million |
 | Total assets 470.0 | supported | `nli` | a true claim passes, so the system is not just flagging everything |
-| Cash increased by 11.5 | contradicted | `table_mismatch` | it decreased; the sign is checked, not only the size |
+| Cash increased by 11.5 | contradicted | `table_mismatch` | it decreased. Be exact about what the page shows: it compares 11.5 with the closing balance row (46.9), so the printed reason is crude; the evidence sentence beside it says "decreased by USD 11.5 million" |
 | Net profit decreased ... | supported | `nli` | true |
 | Acquisition of Helios Data Systems | unverified | `entity_novelty` | the name appears nowhere in the report; the system says it cannot verify, rather than guessing |
 
@@ -68,7 +68,7 @@ presented as a benchmark.
 
 ## Claims that work and claims to avoid
 
-Safe to type live, with verdicts verified on pipeline 4.1:
+Safe to type live. The seven-claim statement above was re-run on pipeline 4.2; the lists below were verified on 4.1, and 4.2 changes only how section numbers are read:
 
 - Contradicted: revenue 22.5% growth; operating income 74.25; interest 9,450 million; total assets grew 25.0%; free cash flow
   positive 7.2 million; gross margin expanded to 58.0%; Cloud Infrastructure Services above 60% of revenue; cash increased
@@ -83,6 +83,6 @@ Do not use live: the three misses above.
 | Problem | Do this |
 |---|---|
 | First request is slow | the instance is waking up; wait, then repeat |
-| A verdict differs from this page | say so; check the pipeline version in provenance; this page is dated to version 4.1 |
+| A verdict differs from this page | say so; check the pipeline version in provenance; this page is dated to version 4.2 |
 | Job seems stuck | refresh History; the job continues in the background |
 | No network | run locally: `backend` with `uvicorn app.main:app`, frontend with `npm run dev` |

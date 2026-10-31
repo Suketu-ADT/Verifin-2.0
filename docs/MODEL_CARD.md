@@ -9,7 +9,7 @@ tables in the [README](../README.md) or from the probe described below; none is 
 | | |
 |---|---|
 | Task | classify a claim about a report as `SUPPORTED`, `CONTRADICTED` or `UNVERIFIED` (the evaluation labels the last one `UNVERIFIABLE`) |
-| Pipeline version | `verifin-pipeline/4.1` (recorded in every result) |
+| Pipeline version | `verifin-pipeline/4.2` (recorded in every result) |
 | Components | MiniLM sentence embeddings and BM25 (reciprocal rank fusion), `cross-encoder/nli-deberta-v3-small` (sentence windows), deterministic checks, a fixed-priority verdict policy |
 | Hardware | CPU only, about 1 s per claim |
 | Outputs | verdict, the rule that decided it (`decided_by`), evidence page and sentence, confidence |
@@ -69,11 +69,17 @@ Contribution of each rule (dev, leave-one-out): entity novelty -20.3 macro-F1 wh
 support -2.8, period check -1.5. Derived-value recomputation and table arithmetic show no effect on the benchmark because it
 has no such claims (see below).
 
-### Change in pipeline 4.1
+### Changes in pipeline 4.1 and 4.2
 
 Pipeline 4.0 produced the test numbers above. Version 4.1 fixed table-check defects found while rehearsing a demo (below). It
 was **not re-scored on the test split**, to keep that split a one-time measurement. It was re-scored on dev: macro-F1 96.7, 
 identical to 4.0 claim for claim (McNemar p = 1.0), as expected because the dev set contains no structured-table claims.
+
+Version 4.2 stops section numbers such as the "4.1" in "4.1 Revenue" being read as figures, which had put a heading number
+into explanations ("the evidence says 4.2"). Dev macro-F1 is again 96.7 with no verdict changed, and the probe below is
+unchanged at 21 / 24. Also in 4.2, outside the verdict path: a conflict explanation now quotes the figure from the evidence
+sentence that best matches the claim, and the optional fact-extraction step has a 45-second budget before it falls back to
+sentences that contain figures. Neither changes a verdict.
 
 ## Table-heavy report probe
 
@@ -83,7 +89,7 @@ pages of statements) was used with 24 claims labelled by reading its figures: 11
 highlights, several of which contradict its statements by design; 8 are true restatements of table rows; 5 are edits (number,
 direction, period, unit, invented entity). Script: `scripts/probe_report.py`; data: `data/eval/northstar_probe.json`.
 
-| Result with pipeline 4.1 | |
+| Result with pipeline 4.2 (same as 4.1) | |
 |---|---|
 | Accuracy | **21 / 24 = 87.5%** |
 | Management-summary highlights | 9 / 11 |

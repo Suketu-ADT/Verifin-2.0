@@ -2,6 +2,7 @@
 Document service handling file validation, storage abstraction, and metadata persistence.
 """
 
+import asyncio
 import hashlib
 import io
 import re
@@ -343,11 +344,20 @@ class DocumentService:
         provider_name = llm.name if (llm and llm.is_configured) else "deterministic-fallback"
 
         try:
-            llm_claims = await extractor.extract_claims(
-                text=doc_text,
-                document_id=document_id,
-                source_chunks=chunks,
+            llm_claims = await asyncio.wait_for(
+                extractor.extract_claims(
+                    text=doc_text,
+                    document_id=document_id,
+                    source_chunks=chunks,
+                ),
+                timeout=settings.llm_extraction_budget_seconds,
             )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"LLM claim extraction exceeded {settings.llm_extraction_budget_seconds}s; using the deterministic extractor."
+            )
+            llm_claims = []
+            provider_name = "deterministic-fallback"
         except Exception as exc:
             logger.warning(f"Error during LLM claim extraction: {exc}")
             llm_claims = []
@@ -355,7 +365,7 @@ class DocumentService:
         # 3. If LLM returned no claims, use deterministic extraction
         if not llm_claims:
             fallback = ClaimExtractor()
-            raw_claims = fallback.extract_claims(doc_text)
+            raw_claims = extractor.figure_sentences(doc_text) or extractor.prefer_figure_claims(fallback.extract_claims(doc_text))
             from app.schemas.llm import LLMExtractedClaim
             for rc in raw_claims[:8]:
                 llm_claims.append(

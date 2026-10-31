@@ -15,8 +15,9 @@ from app.services.verdict_policy import GROUNDED_SUPPORT_MIN_OVERLAP, MULTI_FIGU
 
 # Bump when verdict logic changes, so stored results can be traced to the rules that produced them.
 # 4.1: table units scaled, table period/percentage matching, multi-digit figures (found by a live demo rehearsal).
+# 4.2: section numbers such as "4.1 Revenue" are no longer read as figures, so they cannot appear as a conflicting value.
 # 4.0: local-context figure grounding, unit-twin conflicts, fiscal-year period check, derived-value recompute.
-PIPELINE_VERSION = "verifin-pipeline/4.1"
+PIPELINE_VERSION = "verifin-pipeline/4.2"
 APP_VERSION = "2.0.0"
 
 

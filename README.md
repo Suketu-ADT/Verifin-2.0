@@ -208,7 +208,7 @@ On this dataset BM25 retrieves the gold page best (99.0% vs 96.6% for hybrid) be
 
 ### Known limitations (read before quoting the numbers)
 
-- **Dev numbers are optimistic.** Rules were tuned on the dev errors; the test split (scored once, pipeline 4.0) is the figure to quote. Pipeline 4.1 (table-check fixes) was verified on dev (unchanged, 96.7) and on the probe below, and was **not** re-scored on test.
+- **Dev numbers are optimistic.** Rules were tuned on the dev errors; the test split (scored once, pipeline 4.0) is the figure to quote. Pipelines 4.1 (table-check fixes) and 4.2 (section numbers are not figures) were verified on dev (unchanged, 96.7) and on the probe below, and were **not** re-scored on test.
 - **Tables and statement layouts are the weakest area.** The benchmark has no structured-table claims. On a 24-claim hand-labelled probe of a synthetic table-heavy report, 21 are right (87.5%); see [docs/MODEL_CARD.md](docs/MODEL_CARD.md).
 - **Unverifiable = invented names only.** The 100% score on that class comes from a rule that flags capitalised names absent from the document, which matches how those claims were generated. Real unverifiable claims (plausible facts the report simply does not state) are not covered.
 - **Contradictions are programmatic edits**, mostly numeric. Subtle semantic contradictions are under-represented. `period_swap` labels are arguable when a report states both years.

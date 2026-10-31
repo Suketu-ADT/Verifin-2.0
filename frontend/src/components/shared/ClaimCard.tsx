@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom"
+import { figureCheckLabel } from "../../lib/figureCheck"
 import { Badge } from "../ui/badge"
 import { Card, CardContent } from "../ui/card"
 import {
@@ -83,7 +84,7 @@ export default function ClaimCard({ claim, verificationId, index }: ClaimCardPro
                 claim.numerical_finding.comparison_outcome === "VALIDATED" ? "text-emerald-300 border-emerald-400/30 bg-emerald-500/10" : "text-rose-300 border-rose-400/30 bg-rose-500/10"
               }`}>
                 <Calculator className="h-2.5 w-2.5" />
-                Math: {claim.numerical_finding.comparison_outcome}
+                Figure check: {figureCheckLabel(claim.numerical_finding.comparison_outcome)}
               </span>
             )}
             {claim.temporal_anchor && claim.temporal_anchor.period_match !== "UNSPECIFIED" && (

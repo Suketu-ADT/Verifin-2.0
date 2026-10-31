@@ -125,6 +125,8 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = 2048
     llm_max_input_chars: int = 30000
     llm_max_retries: int = 2
+    # Whole-call budget for document fact extraction; past it the deterministic extractor answers instead.
+    llm_extraction_budget_seconds: int = 45
 
     # Alternative/future provider keys
     llm_model: Optional[str] = None

@@ -237,6 +237,28 @@ export async function getSystemHealth(): Promise<HealthResponse> {
   return response.data;
 }
 
+export interface EngineConfig {
+  pipeline_version: string;
+  models: { embedding: string; nli: string; reranker: string | null };
+  retrieval: { mode: string; fusion: string; top_k: number };
+  policy: {
+    aggregation: string;
+    nli_contradiction_threshold: number;
+    nli_support_threshold: number;
+    grounded_support_min_overlap: number;
+    multi_figure_support_min_overlap: number;
+    disabled_checks: string[];
+  };
+  ocr: { confidence_threshold: number };
+  llm: { provider: string; model: string | null };
+}
+
+/** The values the engine is running with (read-only; set by the server's environment). */
+export async function getEngineConfig(): Promise<EngineConfig> {
+  const response = await api.get<EngineConfig>('/api/v1/system/config');
+  return response.data;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

@@ -193,15 +193,6 @@ export default function Auth() {
                       />
                     </div>
                     
-                    <div className="flex items-center justify-between mt-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" className="rounded border-white/20 bg-white/5 text-amber-500 focus:ring-amber-500 focus:ring-offset-0" />
-                        <span className="text-xs text-slate-300">Remember me</span>
-                      </label>
-                      <a href="#" onClick={(e) => e.preventDefault()} className="text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors">
-                        Forgot password?
-                      </a>
-                    </div>
                     
                     {error && <p role="alert" className="text-xs text-rose-400 mt-4">{error}</p>}
                     <Button type="submit" disabled={isLoading} className="w-full h-11 text-sm font-bold mt-6 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border-none shadow-lg shadow-amber-500/20">

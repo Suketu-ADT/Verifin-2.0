@@ -26,57 +26,17 @@ import {
   submitReviewDecision, 
   type ReviewItem 
 } from "../lib/api"
-
-// Built-in fallback demo items if MongoDB queue is empty
-const DEMO_REVIEW_ITEMS: ReviewItem[] = [
-  {
-    id: "demo-rev-01",
-    document_id: "sec-10k-aapl-2024",
-    page_number: 32,
-    cell_row_idx: 4,
-    cell_col_idx: 1,
-    line_item_name: "Research and Development",
-    original_text: "31,37O", // Scanned typo 'O' instead of '0'
-    original_value: 31370,
-    current_text: "31,37O",
-    current_value: 31370,
-    ocr_confidence: 48.5,
-    reason_for_review: "Low OCR character confidence in numerical token (potential letter 'O')",
-    status: "pending",
-    bbox: { x0: 120.4, top: 412.0, x1: 280.5, bottom: 432.8 },
-    audit_trail: [],
-    created_at: new Date(Date.now() - 3600000).toISOString(),
-    updated_at: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: "demo-rev-02",
-    document_id: "sec-10k-msft-2024",
-    page_number: 48,
-    cell_row_idx: 7,
-    cell_col_idx: 2,
-    line_item_name: "Cash and cash equivalents",
-    original_text: "1l,l38", // Scanned digit 1 vs letter l ambiguity
-    original_value: 11138,
-    current_text: "1l,l38",
-    current_value: 11138,
-    ocr_confidence: 52.0,
-    reason_for_review: "Ambiguous glyph detection: confidence below 60% threshold",
-    status: "pending",
-    bbox: { x0: 210.0, top: 540.2, x1: 320.0, bottom: 558.0 },
-    audit_trail: [],
-    created_at: new Date(Date.now() - 7200000).toISOString(),
-    updated_at: new Date(Date.now() - 7200000).toISOString(),
-  },
-]
+import { useAuth } from "../lib/AuthContext"
 
 type StatusTab = "all" | "pending" | "resolved"
 
 export default function ReviewQueue() {
+  const { user } = useAuth()
   const [items, setItems] = useState<ReviewItem[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedItem, setSelectedItem] = useState<ReviewItem | null>(null)
   const [actionType, setActionType] = useState<"accept" | "correct" | "reject">("accept")
-  const [reviewerId, setReviewerId] = useState("senior_analyst_01")
+  const [reviewerId, setReviewerId] = useState(user?.email ?? "analyst")
   const [reason, setReason] = useState("")
   const [correctedValue, setCorrectedValue] = useState<string>("")
   const [correctedText, setCorrectedText] = useState<string>("")
@@ -90,15 +50,10 @@ export default function ReviewQueue() {
     setLoading(true)
     setErrorMsg(null)
     try {
-      const data = await getReviewQueue()
-      if (data && data.length > 0) {
-        setItems(data)
-      } else {
-        setItems(DEMO_REVIEW_ITEMS)
-      }
-    } catch {
-      // In offline / demo mode fallback to demonstration items
-      setItems(DEMO_REVIEW_ITEMS)
+      setItems((await getReviewQueue()) ?? [])
+    } catch (err: any) {
+      setItems([])
+      setErrorMsg(err?.message || "Could not load the review queue.")
     } finally {
       setLoading(false)
     }
@@ -143,36 +98,10 @@ export default function ReviewQueue() {
         corrected_text: actionType === "correct" ? correctedText.trim() : undefined,
       }
 
-      let updated: ReviewItem
-      try {
-        updated = await submitReviewDecision(selectedItem.id, payload)
-      } catch {
-        // Local simulation if demo ID
-        const now = new Date().toISOString()
-        updated = {
-          ...selectedItem,
-          status: actionType === "accept" ? "accepted" : actionType === "correct" ? "corrected" : "rejected",
-          current_value: actionType === "correct" && correctedValue ? parseFloat(correctedValue) : actionType === "reject" ? null : selectedItem.original_value,
-          current_text: actionType === "correct" && correctedText ? correctedText : actionType === "reject" ? "[REJECTED]" : selectedItem.original_text,
-          audit_trail: [
-            ...selectedItem.audit_trail,
-            {
-              reviewer_id: reviewerId,
-              action: actionType,
-              timestamp: now,
-              previous_value: selectedItem.current_value,
-              new_value: actionType === "correct" && correctedValue ? parseFloat(correctedValue) : null,
-              previous_text: selectedItem.current_text,
-              new_text: actionType === "correct" ? correctedText : "[REJECTED]",
-              reason: reason.trim(),
-            },
-          ],
-          updated_at: now,
-        }
-      }
+      const updated: ReviewItem = await submitReviewDecision(selectedItem.id, payload)
 
       setItems((prev) => prev.map((it) => (it.id === selectedItem.id ? updated : it)))
-      setSuccessMsg(`Decision '${actionType.toUpperCase()}' successfully logged to immutable audit trail.`)
+      setSuccessMsg(`Decision '${actionType.toUpperCase()}' recorded with your name, the time and your rationale.`)
       setSelectedItem(null)
     } catch (err: any) {
       setErrorMsg(err?.message || "Failed to submit review decision.")
@@ -183,6 +112,7 @@ export default function ReviewQueue() {
 
   const pendingCount = items.filter((i) => i.status === "pending").length
   const resolvedCount = items.filter((i) => i.status !== "pending").length
+  const decisionCount = items.reduce((n, i) => n + (i.audit_trail?.length ?? 0), 0)
   const avgConfidence = items.length > 0 
     ? (items.reduce((acc, i) => acc + (i.ocr_confidence || 0), 0) / items.length).toFixed(1)
     : "0.0"
@@ -283,14 +213,14 @@ export default function ReviewQueue() {
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Resolved Audits</div>
           <div className="text-2xl font-bold font-mono text-emerald-300">{resolvedCount} <span className="text-xs font-normal text-slate-500">records</span></div>
           <div className="text-[11px] text-slate-400 flex items-center gap-1">
-            <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Verified into ledger
+            <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Decided by a reviewer
           </div>
         </div>
 
         <div className="glass-card p-4 space-y-1 relative overflow-hidden group">
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-indigo-500" />
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mean OCR Confidence</div>
-          <div className="text-2xl font-bold font-mono text-indigo-300">{avgConfidence}%</div>
+          <div className="text-2xl font-bold font-mono text-indigo-300">{items.length > 0 ? `${avgConfidence}%` : "—"}</div>
           <div className="text-[11px] text-slate-400 flex items-center gap-1">
             <Sliders className="h-3 w-3 text-indigo-400" /> Flag threshold: &lt; 60%
           </div>
@@ -298,10 +228,10 @@ export default function ReviewQueue() {
 
         <div className="glass-card p-4 space-y-1 relative overflow-hidden group">
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-cyan-500" />
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Audit Trail Integrity</div>
-          <div className="text-2xl font-bold font-mono text-cyan-300">100%</div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Decisions Logged</div>
+          <div className="text-2xl font-bold font-mono text-cyan-300">{decisionCount}</div>
           <div className="text-[11px] text-slate-400 flex items-center gap-1">
-            <Sparkles className="h-3 w-3 text-cyan-400" /> Cryptographic ledger active
+            <Sparkles className="h-3 w-3 text-cyan-400" /> Who, when and why, per item
           </div>
         </div>
       </motion.div>
@@ -373,8 +303,8 @@ export default function ReviewQueue() {
         {filteredItems.length === 0 ? (
           <div className="text-center py-16 glass-card p-8 border-white/10 space-y-2">
             <ShieldCheck className="h-8 w-8 text-slate-500 mx-auto" />
-            <h3 className="text-sm font-semibold text-white">No items found</h3>
-            <p className="text-xs text-slate-400">All OCR numerical figures for this view have been reviewed or match the search filter.</p>
+            <h3 className="text-sm font-semibold text-white">{items.length === 0 ? "Nothing is waiting for review" : "No items match this view"}</h3>
+            <p className="text-xs text-slate-400">{items.length === 0 ? "A figure lands here when scanned-document OCR reads it with low confidence. Text-based PDFs, like the sample report, never need it." : "Try another tab or clear the search."}</p>
           </div>
         ) : (
           filteredItems.map((item) => {

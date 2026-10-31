@@ -76,6 +76,27 @@ def _is_year_like(value: float, raw: str, has_unit: bool, is_pct: bool, has_cur:
     )
 
 
+_HEADING_KEYWORD = re.compile(r"(?:\b(?:section|note|item|table|figure|chapter|schedule|annexure|clause)\s+|§\s*)$", re.IGNORECASE)
+_HEADING_START = re.compile(r"(?:^|[.!?:|]\s*)$")
+_HEADING_TITLE = re.compile(r"\s+[A-Z\u2013\u2014-]")
+_HEADING_PREV_WORD = re.compile(r"[A-Z][A-Za-z]+\s+$")
+_HEADING_NEXT_WORD = re.compile(r"\s+[A-Z][a-z]{2,}")
+
+
+def _is_heading_number(text: str, start: int, end: int) -> bool:
+    """A bare dotted number that numbers a heading ("4.2 Gross margin", "Section 4.2") rather than stating a figure."""
+    if not re.fullmatch(r"\d{1,2}(?:\.\d{1,2}){1,2}", text[start:end]):
+        return False
+    before = text[max(0, start - 12):start]
+    if _HEADING_KEYWORD.search(before):
+        return True
+    if _HEADING_START.search(before) and _HEADING_TITLE.match(text[end:end + 3]):
+        return True
+    # text flattened from a PDF has no punctuation before a heading: "... Financial Ratios 4.1 Revenue Revenue ..."
+    return bool(re.fullmatch(r"\d{1,2}\.\d", text[start:end])) and bool(_HEADING_PREV_WORD.search(before)) and bool(_HEADING_NEXT_WORD.match(text[end:end + 12]))
+
+
+
 def extract_figures(text: str) -> List[Figure]:
     """Checkable figures in `text`: anything with a currency, unit or percent, or a large/decimal number."""
     figures: List[Figure] = []
@@ -101,6 +122,8 @@ def extract_figures(text: str) -> List[Figure]:
         has_marker = bool(unit or pct or cur)
         if not has_marker and not ("," in raw or "." in raw or value >= 1000):
             continue  # bare small integers are dates, list numbers or counts
+        if not has_marker and _is_heading_number(text, m.start("num"), end):
+            continue  # "4.2 Gross margin": a section number, not a figure
         scale = UNIT_SCALE.get(re.sub(r"\s+", " ", unit.lower())) if unit else None
         is_bps = bool(pct and ("bps" in pct.lower() or "basis" in pct.lower()))
         if is_bps:
@@ -186,6 +209,33 @@ class GroundingResult:
     anchor_overlap: float = 0.0
 
 
+_RISE = {"grew", "grow", "grows", "rose", "rise", "rises", "increased", "increase", "increases", "expanded", "up"}
+_FALL = {"fell", "fall", "falls", "declined", "decline", "declines", "decreased", "decrease", "decreases", "dropped", "down"}
+
+
+def _direction_words(text: str) -> Set[str]:
+    """Content words with growth and decline verbs folded together, so "grew" meets "increased"."""
+    return {"~rise" if w in _RISE else "~fall" if w in _FALL else w for w in content_words(text)}
+
+
+def quoted_figures(claim: str, passages: Sequence[str], is_pct: bool) -> List[Figure]:
+    """
+    Figures of one kind in the evidence sentence that best matches the whole claim, for the
+    explanation text only; a verdict never depends on this choice.
+    """
+    claim_words = _direction_words(claim)
+    best: List[Figure] = []
+    best_score, best_len = 0.0, 0
+    for sentence in evidence_windows(passages, pairs=False):
+        figs = [f for f in extract_figures(sentence) if f.is_pct == is_pct]
+        if not figs or not claim_words:
+            continue
+        score = len(claim_words & _direction_words(sentence)) / len(claim_words)
+        if score > best_score + 1e-9 or (abs(score - best_score) <= 1e-9 and best and len(sentence) < best_len):
+            best, best_score, best_len = figs, score, len(sentence)
+    return best
+
+
 LOCAL_MIN_OVERLAP = 0.4     # a window must share this much of the figure's local context to be compared
 CONTEXT_CHARS = 70          # claim text on each side of a figure that describes what it measures
 
@@ -245,6 +295,11 @@ def ground_figures(claim: str, passages: Sequence[str]) -> GroundingResult:
             rivals = [af for af in local[1] if af.is_pct == cf.is_pct]
             if rivals:
                 rival = min(rivals, key=lambda a: abs(a.normalized - cf.normalized))
+                # the verdict stands on the local window; the figure quoted back is the one the
+                # sentence that best matches the whole claim states, when it has one of the same kind
+                shown = quoted_figures(claim, passages, cf.is_pct)
+                if shown:
+                    rival = min(shown, key=lambda a: abs(a.normalized - cf.normalized))
                 conflicts.append((cf.text, rival.text))
                 unmatched.append(cf)
                 continue

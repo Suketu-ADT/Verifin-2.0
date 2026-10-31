@@ -21,6 +21,8 @@ from app.services.llm.base import LLMProvider
 from app.services.llm.citation_validator import CitationValidator
 from app.services.llm.factory import get_llm_provider
 from app.services.llm.mock_provider import MockLLMProvider
+from app.services.numeric_grounding import extract_figures, split_sentences
+from app.services.numeric_grounding import _is_heading_number as is_heading_number
 from app.utils.logging import logger
 
 
@@ -45,6 +47,43 @@ class FinancialExtractorService:
         self.llm = llm_provider or get_llm_provider()
         self.validator = citation_validator or CitationValidator()
         self.fallback_extractor = ClaimExtractor()
+
+    @staticmethod
+    def prefer_figure_claims(raw_claims: list) -> list:
+        """Sentences that state a figure are checkable; headers and page furniture are not. Keep the former when there are any."""
+        with_figures = [rc for rc in raw_claims if extract_figures(rc["claim_text"])]
+        return with_figures or raw_claims
+
+    @staticmethod
+    def _strip_page_furniture(sentence: str) -> str:
+        """Drop a leading "Page 4 of 8 Section 4 - Title 4.1 Revenue" run that PDF text glues onto the first sentence."""
+        sentence = re.sub(r"^Page\s+\d+\s+of\s+\d+\s+", "", sentence)
+        cut = 0
+        for m in re.finditer(r"\d{1,2}\.\d{1,2}(?=\s)", sentence):
+            if is_heading_number(sentence, m.start(), m.end()):
+                after = re.match(r"\s+[A-Z][a-z]+\s+", sentence[m.end():])
+                cut = m.end() + (after.end() if after else 0)
+        if cut:
+            sentence = sentence[cut:]
+        else:
+            sentence = re.sub(r"^Section\s+\d+\s+\W\s+(?:[A-Z][\w&,]*\s+)+?(?=[A-Z][a-z]+\s+[a-z])", "", sentence)
+        return sentence
+
+
+    @staticmethod
+    def figure_sentences(text: str, limit: int = 8) -> list:
+        """Whole sentences of the document that state a figure, without the decomposition that splits mid-sentence on PDF text."""
+        seen, out = set(), []
+        for sentence in split_sentences(text):
+            sentence = FinancialExtractorService._strip_page_furniture(sentence)
+            key = sentence.lower()
+            if len(sentence.split()) < 6 or key in seen or not extract_figures(sentence):
+                continue
+            seen.add(key)
+            out.append({"claim_text": sentence, "claim_type": "NUMERICAL", "source_sentence": sentence})
+            if len(out) >= limit:
+                break
+        return out
 
     def _deduplicate_claims(self, claims: List[LLMExtractedClaim]) -> List[LLMExtractedClaim]:
         """Deduplicates claims based on normalized claim text."""
@@ -112,7 +151,7 @@ class FinancialExtractorService:
 
         # If LLM returned no claims or failed/unconfigured, run deterministic fallback
         if not extracted:
-            raw_claims = self.fallback_extractor.extract_claims(text)
+            raw_claims = self.figure_sentences(text) or self.prefer_figure_claims(self.fallback_extractor.extract_claims(text))
             for rc in raw_claims:
                 extracted.append(
                     LLMExtractedClaim(

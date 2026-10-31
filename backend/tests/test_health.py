@@ -149,3 +149,14 @@ async def test_health_reports_in_memory_fallback_as_such(monkeypatch):
     data = response.json()
     assert data["services"]["database"] == "fallback"
     assert data["status"] == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_engine_config_reports_the_running_policy():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/system/config")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pipeline_version"].startswith("verifin-pipeline/")
+    assert body["policy"]["nli_support_threshold"] == 0.5
+    assert body["retrieval"]["fusion"] in {"rrf", "weighted"}

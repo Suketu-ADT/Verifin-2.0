@@ -85,7 +85,7 @@ each request, so a role change or deactivation applies immediately.
 - Each tenant has a hash chain: an event stores `seq`, `prev_hash` and its own SHA-256 over its content. `/audit/verify`
   recomputes the chain and reports the first broken sequence number. A unique `(tenant_id, seq)` index prevents two writers
   from forking the chain. Secrets are stripped from event details by key name.
-- Every session stores provenance: pipeline version (`verifin-pipeline/4.1`), model identifiers, retrieval and policy
+- Every session stores provenance: pipeline version (`verifin-pipeline/4.2`), model identifiers, retrieval and policy
   settings, SHA-256 of the document and of the statement, and per-rule decision counts. It records identifiers and settings
   only, never document text or credentials, so a result can be tied to the exact bytes and rules that produced it.
 

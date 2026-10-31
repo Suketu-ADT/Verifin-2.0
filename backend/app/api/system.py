@@ -4,12 +4,15 @@ System health and status endpoints.
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
+from app.config import settings
 from app.security import Principal, require_role
 from app.security.rate_limit import limit_heavy
 from app.database.mongodb import manager, ping_database
 from app.schemas.system import HealthResponse, ServicesHealth
 from app.services.embedding_service import get_embedding_service
 from app.services.nli_service import get_nli_service
+from app.services.provenance import PIPELINE_VERSION
+from app.services.verdict_policy import GROUNDED_SUPPORT_MIN_OVERLAP, MULTI_FIGURE_SUPPORT_MIN_OVERLAP
 
 router = APIRouter(prefix="/system", tags=["System"])
 
@@ -95,3 +98,31 @@ async def test_llm_readiness(_: Principal = Depends(require_role("admin"))):
     return await provider.test_readiness()
 
 
+
+
+@router.get("/config")
+async def get_engine_config(_: Principal = Depends(require_role("viewer"))) -> dict:
+    """The values the engine is running with. Read-only: they are set by the server's environment."""
+    return {
+        "pipeline_version": PIPELINE_VERSION,
+        "models": {
+            "embedding": settings.embedding_model_name,
+            "nli": settings.nli_model_name,
+            "reranker": settings.reranker_model if settings.reranker_enabled else None,
+        },
+        "retrieval": {
+            "mode": settings.retrieval_mode,
+            "fusion": settings.retrieval_fusion_method,
+            "top_k": settings.retrieval_top_k,
+        },
+        "policy": {
+            "aggregation": settings.nli_aggregation,
+            "nli_contradiction_threshold": settings.nli_contradiction_threshold,
+            "nli_support_threshold": settings.nli_support_threshold,
+            "grounded_support_min_overlap": GROUNDED_SUPPORT_MIN_OVERLAP,
+            "multi_figure_support_min_overlap": MULTI_FIGURE_SUPPORT_MIN_OVERLAP,
+            "disabled_checks": [c.strip() for c in settings.disabled_checks.split(",") if c.strip()],
+        },
+        "ocr": {"confidence_threshold": settings.ocr_confidence_threshold},
+        "llm": {"provider": settings.llm_provider, "model": settings.llm_model},
+    }

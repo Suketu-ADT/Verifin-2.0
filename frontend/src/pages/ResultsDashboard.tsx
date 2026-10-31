@@ -23,6 +23,7 @@ import {
   Sparkles,
 } from "lucide-react"
 import { demoSessions, claimCounts, type NLILabel } from "../lib/demoData"
+import { figureCheckLabel } from "../lib/figureCheck"
 import {
   getVerificationResults,
   getDocument,
@@ -275,7 +276,7 @@ export default function ResultsDashboard() {
                                   c.numerical_finding.comparison_outcome === "VALIDATED" ? "text-emerald-300 border-emerald-400/30 bg-emerald-500/10" : "text-rose-300 border-rose-400/30 bg-rose-500/10"
                                 }`}>
                                   <Calculator className="h-2.5 w-2.5" />
-                                  Math: {c.numerical_finding.comparison_outcome}
+                                  Figure check: {figureCheckLabel(c.numerical_finding.comparison_outcome)}
                                 </span>
                               )}
                             </div>
@@ -479,7 +480,7 @@ export default function ResultsDashboard() {
                                     }`}
                                   >
                                     <Calculator className="h-2.5 w-2.5" />
-                                    Math: {c.numerical_finding.comparison_outcome}
+                                    Figure check: {figureCheckLabel(c.numerical_finding.comparison_outcome)}
                                   </span>
                                 )}
                                 {c.temporal_anchor && c.temporal_anchor.period_match !== "UNSPECIFIED" && (
