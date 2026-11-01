@@ -1,6 +1,6 @@
 # Deploying VERIFIN 2.0 on free tiers
 
-Frontend on GitHub Pages, API on Google Cloud Run, data in MongoDB Atlas. Free-tier figures were checked on 2026-10-31 and
+Frontend on GitHub Pages, API on Google Cloud Run (or a Hugging Face Space, section 2b), data in MongoDB Atlas. Free-tier figures were checked on 2026-10-31 and
 change without notice: re-read the linked pages before a demo.
 
 | Part | Service | Free allowance (source) |
@@ -46,6 +46,40 @@ builds the image with Cloud Build (`deploy/cloudbuild.yaml`), and deploys with:
 the admin account in the app, then turn it off without a rebuild:
 `gcloud run services update verifin-api --region us-central1 --update-env-vars ALLOW_REGISTRATION=false`. Further users are
 created from the Admin page.
+
+## 2b. API on a Hugging Face Space (no card needed)
+
+Use this instead of section 2 when you do not want a Google Cloud billing account. The free CPU Space has 2 vCPU and 16 GB of
+memory, needs no payment method and sleeps after a period without traffic (check the current limits on the
+[Spaces overview](https://huggingface.co/docs/hub/spaces-overview)). Atlas and Pages are unchanged.
+
+1. On huggingface.co create an access token (Settings, Access Tokens) with **Write** permission, then **New Space**: SDK
+   **Docker**, template **Blank**, hardware **CPU basic**, visibility **Public**. Note `<username>/<space-name>`.
+2. Publish the API from the repository root (Git Bash on Windows). Git asks for your Hugging Face username and, as the password,
+   the token:
+   ```bash
+   HF_SPACE=<username>/<space-name> ./deploy/huggingface/publish.sh
+   ```
+3. In the Space, Settings, **Variables and secrets**:
+
+   | Name | Kind | Value |
+   |---|---|---|
+   | `MONGODB_URI` | secret | the Atlas `mongodb+srv://...` string |
+   | `JWT_SECRET` | secret | 64 random hex characters: `python -c "import secrets; print(secrets.token_hex(32))"` |
+   | `METRICS_TOKEN` | secret | any other random string (keeps `/metrics` private) |
+   | `ENVIRONMENT` | variable | `production` |
+   | `FRONTEND_URL` | variable | `https://<github-user>.github.io` (origin only) |
+   | `TRUST_PROXY_HEADERS` | variable | `true` |
+   | `MONGODB_DATABASE` | variable | `verifin` |
+   | `ALLOW_REGISTRATION` | variable | `true` until the admin account exists, then `false` |
+
+   Changing a value restarts the Space.
+4. The API is at `https://<username>-<space-name>.hf.space` (lower case). Use that as `API_BASE_URL` in section 3, and run the smoke test
+   against it.
+
+The build takes about ten minutes the first time because the three models are downloaded into the image. As on Cloud Run, there is
+one instance, so the job queue and rate limiter are per process, and uploaded PDFs live on the container's disk and do not
+survive a restart.
 
 ## 3. Frontend (GitHub Pages)
 
