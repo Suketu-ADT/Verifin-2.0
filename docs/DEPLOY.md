@@ -1,6 +1,6 @@
 # Deploying VERIFIN 2.0 on free tiers
 
-Frontend on GitHub Pages, API on Google Cloud Run (or a Hugging Face Space, section 2b), data in MongoDB Atlas. Free-tier figures were checked on 2026-10-31 and
+Frontend on GitHub Pages, API on Google Cloud Run (or Azure Container Apps, section 2c), data in MongoDB Atlas. Free-tier figures were checked on 2026-10-31 and
 change without notice: re-read the linked pages before a demo.
 
 | Part | Service | Free allowance (source) |
@@ -84,6 +84,31 @@ section 2 or run the API on your own machine. Atlas and Pages are unchanged.
 The build takes about ten minutes the first time because the three models are downloaded into the image. As on Cloud Run, there is
 one instance, so the job queue and rate limiter are per process, and uploaded PDFs live on the container's disk and do not
 survive a restart.
+
+## 2c. API on Azure Container Apps with Azure for Students (no card)
+
+Azure for Students gives US$100 of credit for 12 months, verified with a school email and no credit card
+([offer](https://azure.microsoft.com/free/students), [FAQ](https://learn.microsoft.com/azure/education-hub/faq); terms change, so read them). Container Apps on the
+Consumption plan scales to zero and has a monthly free grant (180,000 vCPU-seconds, 360,000 GiB-seconds, 2 million requests); the
+credit covers use beyond it. The image is built by GitHub Actions and pulled from the GitHub Container Registry, so no Azure container
+registry (a paid resource) is needed.
+
+1. Activate the student offer at azure.microsoft.com/free/students with your school email (and phone verification).
+2. In the repository, run the *Publish API image* workflow (Actions tab, Run workflow), or push a backend change. Then open your
+   GitHub profile, Packages, `verifin-api`, Package settings, and set the visibility to **Public** (once).
+3. In the Azure portal open **Cloud Shell** (the `>_` icon, Bash). If it asks for storage, choose the option without a storage account.
+4. Run:
+   ```bash
+   git clone https://github.com/Suketu-ADT/Verifin-2.0.git && cd Verifin-2.0
+   FRONTEND_ORIGIN=https://<github-user>.github.io ALLOW_REGISTRATION=true LOCATION=centralindia ./deploy/azure/deploy-containerapp.sh
+   ```
+   Paste the Atlas string when prompted. Student subscriptions only allow some regions; if Azure says a region is disallowed, set
+   `LOCATION` to one it lists. The script prints the API URL.
+5. Continue with sections 3 and 4 using that URL, then register the admin account and turn registration off:
+   `az containerapp update -n verifin-api -g verifin-rg --set-env-vars ALLOW_REGISTRATION=false`.
+
+Not verified here: this script and workflow were written without an Azure subscription and have not been run end to end. Set a
+budget alert (Cost Management, Budgets) before leaving it running.
 
 ## 3. Frontend (GitHub Pages)
 
