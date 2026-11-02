@@ -42,6 +42,7 @@ def build_provenance(
             "embedding": settings.embedding_model_name,
             "nli": settings.nli_model_name,
             "reranker": settings.reranker_model if settings.reranker_enabled else None,
+            "low_memory": settings.low_memory,
         },
         "retrieval": {
             "mode": retrieval_mode or settings.retrieval_mode,

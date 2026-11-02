@@ -109,6 +109,7 @@ async def get_engine_config(_: Principal = Depends(require_role("viewer"))) -> d
             "embedding": settings.embedding_model_name,
             "nli": settings.nli_model_name,
             "reranker": settings.reranker_model if settings.reranker_enabled else None,
+            "low_memory": settings.low_memory,
         },
         "retrieval": {
             "mode": settings.retrieval_mode,
@@ -124,5 +125,13 @@ async def get_engine_config(_: Principal = Depends(require_role("viewer"))) -> d
             "disabled_checks": [c.strip() for c in settings.disabled_checks.split(",") if c.strip()],
         },
         "ocr": {"confidence_threshold": settings.ocr_confidence_threshold},
-        "llm": {"provider": settings.llm_provider, "model": settings.llm_model},
+        "llm": {
+            "provider": settings.llm_provider,
+            "model": settings.llm_model,
+            "cache": {
+                "enabled": settings.llm_cache_enabled,
+                "ttl_seconds": settings.llm_cache_ttl_seconds,
+                "max_entries": settings.llm_cache_max_entries,
+            },
+        },
     }

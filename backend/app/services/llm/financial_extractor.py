@@ -21,6 +21,7 @@ from app.services.llm.base import LLMProvider
 from app.services.llm.citation_validator import CitationValidator
 from app.services.llm.factory import get_llm_provider
 from app.services.llm.mock_provider import MockLLMProvider
+from app.services.llm.response_cache import get_response_cache
 from app.services.numeric_grounding import extract_figures, split_sentences
 from app.services.numeric_grounding import _is_heading_number as is_heading_number
 from app.utils.logging import logger
@@ -125,23 +126,33 @@ class FinancialExtractorService:
             try:
                 # Enforce input limit; process in batches if text exceeds max_input_chars
                 max_chars = settings.llm_max_input_chars - 1000  # reserve buffer for prompt
-                text_batches = (
-                    [text[i : i + max_chars] for i in range(0, len(text), max_chars)]
-                    if len(text) > max_chars
-                    else [text]
-                )
+                cache = None if isinstance(self.llm, MockLLMProvider) else get_response_cache()
 
-                for batch_idx, batch_text in enumerate(text_batches):
+                # Slice one batch at a time rather than building every slice up front, so the document is never held twice.
+                for start in range(0, len(text), max_chars):
                     prompt = (
                         f"Extract all atomic financial claims from the following source text:\n\n"
-                        f"{batch_text}"
+                        f"{text[start : start + max_chars]}"
                     )
+                    key = cache and cache.make_key(
+                        self.llm.name, self.llm.model_name, self.CLAIM_EXTRACTION_SYSTEM_PROMPT, prompt, "LLMClaimExtractionResponse"
+                    )
+                    cached = cache.get(key) if cache else None
+                    if cached:
+                        try:
+                            extracted.extend(LLMClaimExtractionResponse.model_validate_json(cached).claims)
+                            logger.info("Fact extraction answered from the response cache.")
+                            continue
+                        except ValueError:
+                            logger.warning("Ignoring an unreadable response-cache entry.")
                     structured_res: LLMClaimExtractionResponse = await self.llm.generate_structured(
                         prompt=prompt,
                         response_model=LLMClaimExtractionResponse,
                         system_instruction=self.CLAIM_EXTRACTION_SYSTEM_PROMPT,
                     )
                     extracted.extend(structured_res.claims)
+                    if cache and structured_res.claims:  # an empty answer is not worth keeping
+                        cache.put(key, structured_res.model_dump_json())
 
             except Exception as exc:
                 logger.warning(

@@ -97,6 +97,8 @@ class Settings(BaseSettings):
     nli_model_name: str = "cross-encoder/nli-deberta-v3-small"
     nli_device: str = "cpu"
     nli_batch_size: int = 16
+    # Hold each model's token-embedding table as int8 (about 250 MB less memory, probabilities move by ~0.002). Off by default.
+    low_memory: bool = False
     nli_contradiction_threshold: float = 0.50
     nli_support_threshold: float = 0.50
     nli_aggregation: str = "aligned"  # "aligned" (sentence windows) or "legacy" (whole chunks, any contradiction wins)
@@ -125,6 +127,12 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = 2048
     llm_max_input_chars: int = 30000
     llm_max_retries: int = 2
+    # Cache of structured LLM responses (fact extraction): a repeat call for the same model, instructions and text is answered
+    # from disk. Entries expire after the time limit and the oldest go first past the count limit.
+    llm_cache_enabled: bool = True
+    llm_cache_dir: Optional[str] = None  # default: <data dir>/cache/llm
+    llm_cache_ttl_seconds: int = 7 * 24 * 3600
+    llm_cache_max_entries: int = 256
     # Whole-call budget for document fact extraction; past it the deterministic extractor answers instead.
     llm_extraction_budget_seconds: int = 45
 

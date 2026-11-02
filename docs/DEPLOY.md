@@ -72,6 +72,8 @@ memory, needs no payment method and sleeps after a period without traffic (check
    | `TRUST_PROXY_HEADERS` | variable | `true` |
    | `MONGODB_DATABASE` | variable | `verifin` |
    | `ALLOW_REGISTRATION` | variable | `true` until the admin account exists, then `false` |
+   | `HF_TOKEN` | secret | optional: a token with only the Inference Providers permission turns on LLM fact extraction (cached on disk) |
+   | `LOW_MEMORY` | variable | optional: `true` saves about 300 MB with identical dev verdicts (see the model card) |
 
    Changing a value restarts the Space.
 4. The API is at `https://<username>-<space-name>.hf.space` (lower case). Use that as `API_BASE_URL` in section 3, and run the smoke test

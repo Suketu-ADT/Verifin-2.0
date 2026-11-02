@@ -15,7 +15,7 @@ flowchart LR
     API --> DB[(MongoDB Atlas<br/>documents, chunks, sessions,<br/>users, audit chain)]
     API -.->|optional, fact extraction only| HF[Hugging Face<br/>inference API]
     API -.->|EDGAR import only| SEC[SEC EDGAR<br/>www.sec.gov, data.sec.gov]
-    API --- M[Models held in memory:<br/>MiniLM embeddings, DeBERTa-v3-small NLI]
+    API --- M[Models held in memory:<br/>MiniLM embeddings, DeBERTa-v3-small NLI<br/>optional int8 embedding tables]
 ```
 
 The verification path is fully local. Claim extraction, retrieval, NLI and the verdict rules run inside the container with

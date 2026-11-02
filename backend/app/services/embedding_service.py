@@ -48,6 +48,11 @@ class EmbeddingService:
             try:
                 logger.info(f"Loading embedding model '{self.model_name}'...")
                 self._model = SentenceTransformer(self.model_name)
+                if settings.low_memory:
+                    from app.services.low_memory import shrink_input_embeddings
+
+                    saved = shrink_input_embeddings(self._model[0].auto_model)
+                    logger.info(f"Low-memory mode: embedding table stored as int8 ({saved / 2**20:.0f} MB saved).")
                 self._initialized = True
                 self._init_error = None
                 logger.info(

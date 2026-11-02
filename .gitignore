@@ -74,6 +74,9 @@ data/frontend*.pdf
 data/frontend_rendered.png
 data/sample_report_extracted.txt
 
+# Runtime LLM response cache
+data/cache/
+
 # Evaluation corpus (large public PDFs) and caches; the manifest and generated datasets are tracked
 data/reports/*.pdf
 data/eval/cache/

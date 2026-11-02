@@ -85,6 +85,27 @@ unchanged at 21 / 24. Also in 4.2, outside the verdict path: a conflict explanat
 sentence that best matches the claim, and the optional fact-extraction step has a 45-second budget before it falls back to
 sentences that contain figures. Neither changes a verdict.
 
+### Fact-extraction cache and memory
+
+The optional fact-extraction step calls a hosted model, so the model's own memory is not used by this process. What this process
+holds is the document text and one response at a time. Extraction now slices the document one batch at a time instead of building
+every slice first, and keeps a disk cache of the model's answers (`LLM_CACHE_ENABLED`, default on; entries expire after
+`LLM_CACHE_TTL_SECONDS`, 7 days, and the oldest go past `LLM_CACHE_MAX_ENTRIES`, 256). The key covers provider, model, instructions,
+the exact text and the response schema, so any change is a miss; citations, ids and review flags are applied after the cache and
+are never stored in it. A repeat extraction of the same document therefore makes no call to the provider. Not measured against a
+live provider (no `HF_TOKEN` was available here); the behaviour is covered by unit tests with a counting provider.
+
+### Low-memory mode (optional)
+
+`LOW_MEMORY=true` stores each model's token-embedding table as int8 (one byte per weight and a per-row scale) instead of float32.
+With both models loaded and warm, the process uses about 1.03 GB instead of 1.34 GB on the shipped models (-23%, measured on
+Windows with the Python process's working set); the first load still peaks near 1.4 GB because the float table exists briefly.
+On dev (354 claims) all 354 verdicts match the normal run (macro-F1 96.7, McNemar p = 1.0); raw NLI alone changes on one claim
+(70.6 to 70.3). The test split was not re-run in this mode, so the 95.2 headline is for the default. Linear layers stay float32:
+quantizing them as well moved class probabilities by up to 0.4 in a 24-pair check, which is too large to trust. The saving is
+about 300 MB for both `deberta-v3-small` and `-base` (the table is the same size), so it matters less for larger models.
+Code: `backend/app/services/low_memory.py`. The setting appears in provenance and in `/system/config`.
+
 ## Table-heavy report probe
 
 The benchmark is built from sentences of narrative reports, so it cannot show how the system handles financial statements laid

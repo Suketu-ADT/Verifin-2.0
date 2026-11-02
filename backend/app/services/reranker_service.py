@@ -28,6 +28,10 @@ class RerankerService:
                 from sentence_transformers import CrossEncoder
 
                 self._model = CrossEncoder(self.model_name, max_length=256)
+                if settings.low_memory:
+                    from app.services.low_memory import shrink_input_embeddings
+
+                    shrink_input_embeddings(self._model.model)
                 logger.info(f"Loaded reranker model '{self.model_name}'")
         return self._model
 
