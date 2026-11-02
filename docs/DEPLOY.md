@@ -110,6 +110,21 @@ registry (a paid resource) is needed.
 Not verified here: this script and workflow were written without an Azure subscription and have not been run end to end. Set a
 budget alert (Cost Management, Budgets) before leaving it running.
 
+## 2d. Run from your own machine behind a free tunnel (no cloud account)
+
+For a demo at a known time, `scripts/start_demo.ps1` builds the site, starts the API with `FRONTEND_DIST` set so the API serves the site
+as well (one address, no CORS), and opens a Cloudflare quick tunnel to it. Data stays in your Atlas cluster (`backend\.env`). The
+public address exists only while the window is open and the machine is awake, and it changes on every start. Quick tunnels have no
+uptime guarantee; they are for demos. GitHub Pages is not used on this route.
+
+```powershell
+.\scripts\start_demo.ps1 -AllowRegistration   # first run: register the admin account in the site
+.\scripts\start_demo.ps1                      # later runs: registration closed
+.\scripts\start_demo.ps1 -NoTunnel            # http://localhost:8000 only
+```
+
+It needs `cloudflared` on PATH or at `tools\cloudflared.exe` (the `tools` folder is git-ignored). Close other programs using port 8000 first.
+
 ## 3. Frontend (GitHub Pages)
 
 1. The repository must be public on the Free plan.

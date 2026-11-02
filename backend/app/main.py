@@ -4,10 +4,11 @@ VERIFIN 2.0 — FastAPI Application Entrypoint.
 
 import secrets
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from app.api import (
     auth_router,
@@ -132,7 +133,27 @@ def create_app() -> FastAPI:
         body, content_type = metrics.render()
         return Response(content=body, media_type=content_type)
 
+    _serve_frontend(app)
     return app
+
+
+def _serve_frontend(app: FastAPI) -> None:
+    """Serve the built web interface from the API process, with index.html as the fallback for client-side routes."""
+    if not settings.frontend_dist:
+        return
+    dist = Path(settings.frontend_dist).resolve()
+    if not (dist / "index.html").is_file():
+        logger.warning(f"FRONTEND_DIST is set but {dist} has no index.html; the web interface is not served.")
+        return
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def web_interface(path: str):
+        if path.split("/")[0] == "api":
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        candidate = (dist / path).resolve()
+        if path and candidate.is_file() and candidate.is_relative_to(dist):
+            return FileResponse(candidate)
+        return FileResponse(dist / "index.html")
 
 
 app = create_app()

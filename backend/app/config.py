@@ -72,6 +72,9 @@ class Settings(BaseSettings):
 
     # ── Frontend & CORS ──────────────────────────────────────────────────
     frontend_url: str = "http://localhost:5173"
+    # Folder holding the built web interface (frontend/dist). When set, the API serves it too, so the site and the API share one
+    # address: used to run the whole product behind a single tunnel or host.
+    frontend_dist: Optional[str] = None
 
     # ── Storage ──────────────────────────────────────────────────────────
     upload_dir: str = "./storage/uploads"

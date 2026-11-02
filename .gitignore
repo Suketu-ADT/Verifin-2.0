@@ -81,3 +81,6 @@ data/cache/
 data/reports/*.pdf
 data/eval/cache/
 data/eval/llm_cache/
+
+# Local tools (cloudflared) used by scripts/start_demo.ps1
+tools/

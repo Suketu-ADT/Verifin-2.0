@@ -4,8 +4,10 @@ import { clearToken, getToken, type AuthUser } from './auth';
 // ---------------------------------------------------------------------------
 // Base URL — configurable via environment variable
 // ---------------------------------------------------------------------------
-const API_BASE_URL =
-  (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://localhost:8000';
+// "/" means the same address that served the page (the API hosts the interface); trailing slashes are dropped so paths join cleanly.
+const API_BASE_URL = String(
+  (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://localhost:8000',
+).replace(/\/+$/, '');
 
 const api = axios.create({
   baseURL: API_BASE_URL,
