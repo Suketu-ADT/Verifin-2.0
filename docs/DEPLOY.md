@@ -49,9 +49,11 @@ created from the Admin page.
 
 ## 2b. API on a Hugging Face Space (no card needed)
 
-Use this instead of section 2 when you do not want a Google Cloud billing account. The free CPU Space has 2 vCPU and 16 GB of
-memory, needs no payment method and sleeps after a period without traffic (check the current limits on the
-[Spaces overview](https://huggingface.co/docs/hub/spaces-overview)). Atlas and Pages are unchanged.
+**Check this first: since mid-2026 Hugging Face may require a paid plan to create Docker or Gradio Spaces.** On a free account the
+Docker option is marked "Paid" and a Gradio Space offers only ZeroGPU, which cannot host this API (checked on 2026-11-02 with a
+new free account; see the Hub's [Spaces overview](https://huggingface.co/docs/hub/spaces-overview)). Static Spaces stay free but cannot run
+a backend. If your account can create a Docker Space on CPU basic (2 vCPU, 16 GB, no hourly cost), the steps below work; if not, use
+section 2 or run the API on your own machine. Atlas and Pages are unchanged.
 
 1. On huggingface.co create an access token (Settings, Access Tokens) with **Write** permission, then **New Space**: SDK
    **Docker**, template **Blank**, hardware **CPU basic**, visibility **Public**. Note `<username>/<space-name>`.
