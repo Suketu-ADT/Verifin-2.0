@@ -109,4 +109,5 @@ async def ping_database(timeout_seconds: float = 2.0) -> bool:
 
 def get_database():
     """Dependency / accessor to retrieve current active MongoDB database or fallback."""
-    return manager.database or fallback_database
+    # A pymongo Database refuses truth testing, so `or` would raise on a real connection: compare with None.
+    return manager.database if manager.database is not None else fallback_database

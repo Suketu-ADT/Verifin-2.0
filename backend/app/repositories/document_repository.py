@@ -14,7 +14,7 @@ class DocumentRepository:
 
     @property
     def db(self) -> AsyncIOMotorDatabase:
-        database = self._db or get_database()
+        database = self._db if self._db is not None else get_database()
         if database is None:
             raise ConnectionError("MongoDB is currently unavailable.")
         return database

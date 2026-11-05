@@ -48,9 +48,16 @@ $env:TRUST_PROXY_HEADERS = "true"
 $env:ALLOW_REGISTRATION = if ($AllowRegistration) { "true" } else { "false" }
 $env:FRONTEND_DIST = Join-Path $frontend "dist"
 $env:PYTHONPATH = $backend
+$env:FORWARDED_ALLOW_IPS = "*"   # as an environment value: a bare * on the command line is expanded into file names on Windows
+# Another server already on the port would answer the readiness check below and be mistaken for this one.
+$probe = New-Object Net.Sockets.TcpClient
+try { $inUse = $probe.ConnectAsync("127.0.0.1", $Port).Wait(1000) -and $probe.Connected } catch { $inUse = $false } finally { $probe.Dispose() }
+if ($inUse) {
+  throw "Port $Port is already in use (an earlier copy of the app?). Close it, or pick another with -Port, for example: -Port 8123"
+}
 $log = Join-Path ([IO.Path]::GetTempPath()) "verifin-api.log"
 $api = Start-Process -FilePath $python -WorkingDirectory $backend -PassThru -WindowStyle Hidden `
-  -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", $Port, "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*") `
+  -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", $Port, "--workers", "1", "--proxy-headers") `
   -RedirectStandardError $log -RedirectStandardOutput "$log.out"
 $tunnel = $null
 try {
