@@ -125,6 +125,33 @@ uptime guarantee; they are for demos. GitHub Pages is not used on this route.
 
 It needs `cloudflared` on PATH or at `tools\cloudflared.exe` (the `tools` folder is git-ignored). Close other programs using port 8000 first.
 
+## 2e. Sign in with Google and with an emailed code
+
+The sign-in page offers a password, an emailed 6-digit code (passwordless; a new address creates an account while sign-up is open) and
+Google. Each appears only when the server is set up for it (`GET /api/v1/auth/options`). Set these in `backend\.env`:
+
+```
+# Email codes: Gmail example. Create an app password at myaccount.google.com/apppasswords (needs 2-step verification).
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=you@gmail.com
+SMTP_PASSWORD=<16-character app password>
+SMTP_FROM=you@gmail.com
+
+# Google: the OAuth client ID (not the secret). Console steps below.
+GOOGLE_CLIENT_ID=1234567890-abcdef.apps.googleusercontent.com
+```
+
+Without SMTP, codes are only written to the API log and only outside production; with `ENVIRONMENT=production` and no SMTP the code
+option is hidden.
+
+Google console (free): console.cloud.google.com, APIs & Services, OAuth consent screen (External, add yourself as a test user),
+then Credentials, Create credentials, OAuth client ID, Web application. Under **Authorized JavaScript origins** add the exact
+address the site is served from, for example `http://localhost:8000`. No redirect URI is needed. Google requires every origin to be
+registered exactly, so the changing `trycloudflare.com` address of section 2d cannot be used with Google sign-in; for a public demo
+use a fixed address (for example a free ngrok static domain, or a named Cloudflare tunnel on a domain you own) and register that
+origin. Email codes work on any address.
+
 ## 3. Frontend (GitHub Pages)
 
 1. The repository must be public on the Free plan.

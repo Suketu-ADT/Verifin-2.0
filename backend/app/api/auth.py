@@ -3,6 +3,8 @@ Authentication, user management and API keys.
 
 * ``POST /auth/register`` creates a new organisation (tenant) with its first admin, when registration is open.
 * ``POST /auth/login`` exchanges email and password for a short-lived access token.
+* ``POST /auth/google`` and ``POST /auth/otp/request`` + ``/otp/verify`` do the same with a Google account or an emailed code.
+  Both create the account (a new organisation with the person as its admin) when registration is open and the address is new.
 * Admins manage the users of their own tenant; analysts and admins manage API keys.
 """
 
@@ -14,7 +16,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
@@ -22,10 +24,14 @@ from app.config import settings
 from app.models.api_key import ApiKeyModel
 from app.models.user import UserModel
 from app.repositories.api_key_repository import ApiKeyRepository
+from app.repositories.otp_repository import OtpRepository
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import audit
+from app.services.mailer import send_email, smtp_configured
+from app.services.signin import GoogleTokenError, code_matches, hash_code, new_code, verify_google_credential
 from app.security.passwords import DUMMY_HASH, hash_password, verify_password
 from app.security.principal import ANONYMOUS, ROLE_RANK, Principal, get_principal, hash_api_key, require_role
+from app.security.rate_limit import SlidingWindowLimiter
 from app.security.tokens import create_access_token
 from app.utils.logging import logger
 
@@ -38,9 +44,8 @@ MAX_PASSWORD_LENGTH = 128  # bounds the cost of hashing attacker-supplied input
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
 
-class Credentials(BaseModel):
+class EmailRequest(BaseModel):
     email: str
-    password: str = Field(..., max_length=MAX_PASSWORD_LENGTH)
 
     @field_validator("email")
     @classmethod
@@ -49,6 +54,28 @@ class Credentials(BaseModel):
         if not _EMAIL_RE.match(v) or len(v) > 254:
             raise ValueError("A valid email address is required.")
         return v
+
+
+class Credentials(EmailRequest):
+    password: str = Field(..., max_length=MAX_PASSWORD_LENGTH)
+
+
+class OtpVerifyRequest(EmailRequest):
+    code: str = Field(..., min_length=4, max_length=12)
+    name: Optional[str] = Field(default=None, max_length=120)  # used only when the code creates a new account
+
+
+class GoogleLoginRequest(BaseModel):
+    credential: str = Field(..., min_length=20, max_length=4096)  # the ID token from Google Identity Services
+
+
+class AuthOptions(BaseModel):
+    """What the sign-in page may offer on this server."""
+
+    password: bool = True
+    google_client_id: Optional[str] = None
+    email_otp: bool = False
+    registration: bool = True
 
 
 class RegisterRequest(Credentials):
@@ -157,6 +184,64 @@ def _token_response(user: UserModel) -> TokenResponse:
                          user=UserResponse.of(user))
 
 
+def _otp_available() -> bool:
+    """Codes need a way to reach the person. Without SMTP they only go to the log, which is never acceptable in production."""
+    return settings.email_otp_enabled and (smtp_configured() or settings.environment.lower() != "production")
+
+
+# Per-address limits on codes. Shared across all addresses on purpose, known or not, so they say nothing about who has an account.
+_otp_gap = SlidingWindowLimiter()
+_otp_hourly = SlidingWindowLimiter(window=3600.0)
+
+
+def reset_otp_limits() -> None:
+    _otp_gap.reset()
+    _otp_hourly.reset()
+
+
+def _deliver_code(email: str, code: str) -> None:
+    subject = "Your VERIFIN sign-in code"
+    body = (f"Your VERIFIN sign-in code is {code}.\n\nIt works once and expires in {settings.otp_ttl_minutes} minutes. "
+            "If you did not ask for it, you can ignore this email.")
+    if smtp_configured():
+        send_email(email, subject, body)
+    else:  # development only: _otp_available() refuses this branch in production
+        logger.warning(f"[development] sign-in code for {email}: {code} (SMTP is not configured, so nothing was emailed)")
+
+
+def _as_utc(value) -> datetime:
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value)
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+async def _sign_in_verified_email(email: str, name: Optional[str], method: str, google_id: Optional[str] = None) -> UserModel:
+    """Log in (or, when registration is open, create) the account for an address whose owner just proved it."""
+    repo = UserRepository()
+    user = await repo.get_user_by_email(email)
+    if user is None:
+        if not settings.allow_registration:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Self-service registration is disabled.")
+        user = UserModel(id=str(uuid.uuid4()), email=email, name=name or email.split("@")[0], tenant_id=str(uuid.uuid4()),
+                         role="admin", google_id=google_id, email_verified=True, last_login_at=datetime.now(timezone.utc))
+        await repo.create_user(user)
+        logger.info(f"Registered new tenant {user.tenant_id} with admin {user.id} via {method}")
+        await audit.record("auth.register", tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
+                           actor_role=user.role, resource_type="user", resource_id=user.id, details={"method": method})
+        return user
+    if not user.is_active or (google_id and user.google_id and user.google_id != google_id):
+        await audit.record("auth.login", tenant_id=user.tenant_id, outcome="denied", actor_id=user.id, actor_email=user.email,
+                           details={"method": method, "reason": "inactive" if not user.is_active else "google_account_mismatch"})
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="This account cannot sign in.")
+    fields = {"last_login_at": datetime.now(timezone.utc), "email_verified": True}
+    if google_id and not user.google_id:
+        fields["google_id"] = google_id
+    await repo.update_user(user.id, fields)
+    await audit.record("auth.login", tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
+                       actor_role=user.role, resource_type="user", resource_id=user.id, details={"method": method})
+    return await repo.get_user_by_id(user.id)
+
+
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 
@@ -194,6 +279,69 @@ async def login(body: Credentials) -> TokenResponse:
     await repo.update_user(user.id, {"last_login_at": datetime.now(timezone.utc)})
     await audit.record("auth.login", tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
                        actor_role=user.role, resource_type="user", resource_id=user.id)
+    return _token_response(user)
+
+
+@router.get("/options", response_model=AuthOptions)
+async def auth_options() -> AuthOptions:
+    """Public: which sign-in methods this server offers, so the page shows only the working ones."""
+    return AuthOptions(google_client_id=settings.google_client_id or None, email_otp=_otp_available(),
+                       registration=settings.allow_registration)
+
+
+@router.post("/otp/request", status_code=status.HTTP_202_ACCEPTED)
+async def otp_request(body: EmailRequest, background: BackgroundTasks) -> dict:
+    """Emails a one-time code. The answer is the same whether or not the address has an account."""
+    if not _otp_available():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Email codes are not available on this server.")
+    _otp_gap.window = float(settings.otp_resend_seconds)
+    for limiter, limit in ((_otp_gap, 1), (_otp_hourly, settings.otp_max_per_hour)):
+        allowed, _, retry = limiter.check(body.email, limit)
+        if not allowed:
+            seconds = max(1, int(retry) + 1)
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=f"A code was sent recently. Try again in {seconds}s.",
+                                headers={"Retry-After": str(seconds)})
+    user = await UserRepository().get_user_by_email(body.email)
+    if (user and user.is_active) or (user is None and settings.allow_registration):
+        code = new_code()
+        expires = datetime.now(timezone.utc) + timedelta(minutes=settings.otp_ttl_minutes)
+        await OtpRepository().save(body.email, hash_code(body.email, code), expires)
+        background.add_task(_deliver_code, body.email, code)
+    return {"detail": "If this address can sign in, a code is on its way.", "resend_after_seconds": settings.otp_resend_seconds}
+
+
+@router.post("/otp/verify", response_model=TokenResponse)
+async def otp_verify(body: OtpVerifyRequest) -> TokenResponse:
+    repo = OtpRepository()
+    rejected = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="That code is not valid or has expired.")
+    challenge = await repo.get(body.email)
+    if challenge is None:
+        raise rejected
+    if _as_utc(challenge["expires_at"]) <= datetime.now(timezone.utc) or int(challenge.get("attempts", 0)) >= settings.otp_max_attempts:
+        await repo.delete(body.email)
+        raise rejected
+    if not code_matches(body.email, body.code.strip(), challenge["code_hash"]):
+        if await repo.record_failure(body.email) >= settings.otp_max_attempts:
+            await repo.delete(body.email)  # too many wrong guesses: the code is gone, ask for a new one
+        await audit.record("auth.login", tenant_id="_unscoped", outcome="denied", actor_id="unknown", actor_email=body.email,
+                           details={"method": "otp", "reason": "bad_code"})
+        raise rejected
+    await repo.delete(body.email)  # a code works once
+    return _token_response(await _sign_in_verified_email(body.email, body.name, "otp"))
+
+
+@router.post("/google", response_model=TokenResponse)
+async def google_login(body: GoogleLoginRequest) -> TokenResponse:
+    """Signs in with the ID token Google gave the browser. The token is verified here before anything is trusted."""
+    if not settings.google_client_id:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured on this server.")
+    try:
+        claims = await run_in_threadpool(verify_google_credential, body.credential)
+    except GoogleTokenError as exc:
+        await audit.record("auth.login", tenant_id="_unscoped", outcome="denied", actor_id="unknown",
+                           details={"method": "google", "reason": "invalid_token"})
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    user = await _sign_in_verified_email(str(claims["email"]).strip().lower(), claims.get("name"), "google", google_id=str(claims["sub"]))
     return _token_response(user)
 
 

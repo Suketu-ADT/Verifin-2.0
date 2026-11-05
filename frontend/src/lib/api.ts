@@ -508,6 +508,30 @@ export async function registerRequest(email: string, password: string, name: str
   return (await api.post<TokenResponse>('/api/v1/auth/register', { email, password, name })).data;
 }
 
+/** Which sign-in methods the server offers. */
+export interface AuthOptions {
+  password: boolean;
+  google_client_id: string | null;
+  email_otp: boolean;
+  registration: boolean;
+}
+
+export async function fetchAuthOptions(): Promise<AuthOptions> {
+  return (await api.get<AuthOptions>('/api/v1/auth/options')).data;
+}
+
+export async function requestOtp(email: string): Promise<{ detail: string; resend_after_seconds: number }> {
+  return (await api.post('/api/v1/auth/otp/request', { email })).data;
+}
+
+export async function verifyOtp(email: string, code: string, name?: string): Promise<TokenResponse> {
+  return (await api.post<TokenResponse>('/api/v1/auth/otp/verify', { email, code, name: name || undefined })).data;
+}
+
+export async function googleLoginRequest(credential: string): Promise<TokenResponse> {
+  return (await api.post<TokenResponse>('/api/v1/auth/google', { credential })).data;
+}
+
 export async function fetchCurrentUser(): Promise<AuthUser> {
   return (await api.get<AuthUser>('/api/v1/auth/me')).data;
 }

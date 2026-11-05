@@ -20,6 +20,10 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         await db.users.create_index([("email", pymongo.ASCENDING)], unique=True, sparse=True)
         await db.users.create_index([("google_id", pymongo.ASCENDING)], sparse=True)
 
+        # Pending email sign-in codes: one per address, removed by the database once they expire
+        await db.otp_challenges.create_index([("email", pymongo.ASCENDING)], unique=True)
+        await db.otp_challenges.create_index([("expires_at", pymongo.ASCENDING)], expireAfterSeconds=0)
+
         # Documents collection
         await db.documents.create_index([("user_id", pymongo.ASCENDING)])
         await db.documents.create_index([("created_at", pymongo.DESCENDING)])

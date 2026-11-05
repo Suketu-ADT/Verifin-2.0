@@ -44,6 +44,23 @@ class Settings(BaseSettings):
     allow_registration: bool = True  # public self-service sign-up (creates a new tenant)
     min_password_length: int = 10
 
+    # ── Sign-in without a password ───────────────────────────────────────
+    # Google: the web page obtains an ID token from Google; the API checks it against this OAuth client ID. Unset = Google sign-in off.
+    google_client_id: Optional[str] = None
+    # Email one-time codes. Codes are sent over SMTP; without SMTP they are only written to the log, and never in production.
+    email_otp_enabled: bool = True
+    otp_length: int = 6
+    otp_ttl_minutes: int = 10
+    otp_max_attempts: int = 5  # wrong guesses before a code is thrown away
+    otp_resend_seconds: int = 45  # minimum gap between two codes for the same address
+    otp_max_per_hour: int = 6  # codes per address per hour
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from: Optional[str] = None  # sender address; defaults to the SMTP username
+    smtp_ssl: bool = False  # True: implicit TLS (port 465); False: STARTTLS (port 587)
+
     # ── Rate limiting (per instance, in memory) ──────────────────────────
     rate_limit_enabled: bool = True
     rate_limit_per_minute: int = 120  # general API calls per principal or client address

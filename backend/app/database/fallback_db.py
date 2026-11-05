@@ -192,8 +192,10 @@ class FallbackCollection:
         count = 0
         for d in self._docs:
             if _matches_filter(d, query):
-                if "$set" in update:
-                    d.update(update["$set"])
+                if "$set" in update or "$inc" in update:
+                    d.update(update.get("$set", {}))
+                    for field, step in update.get("$inc", {}).items():
+                        d[field] = d.get(field, 0) + step
                 else:
                     d.update(update)
                 count += 1

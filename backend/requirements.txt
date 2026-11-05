@@ -1,5 +1,5 @@
 # ==============================================================================
-# VERIFIN 2.0 — Backend Dependencies (Phase 1A: Foundation)
+# VERIFIN 2.0 â€” Backend Dependencies (Phase 1A: Foundation)
 # ==============================================================================
 
 # Web Framework & Server
@@ -33,6 +33,7 @@ rank-bm25>=0.2.2
 
 # Security & Observability
 PyJWT>=2.8.0
+cryptography>=42.0.0  # RS256 verification of Google ID tokens
 prometheus-client>=0.20.0
 
 # Report export

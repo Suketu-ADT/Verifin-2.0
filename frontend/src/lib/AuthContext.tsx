@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 import { Navigate, Outlet, useLocation } from "react-router-dom"
-import { fetchCurrentUser, loginRequest, registerRequest } from "./api"
+import { fetchCurrentUser, googleLoginRequest, loginRequest, registerRequest, verifyOtp } from "./api"
 import { ANONYMOUS_ID, clearToken, setToken, type AuthUser } from "./auth"
 
 interface AuthState {
@@ -10,6 +10,10 @@ interface AuthState {
   authDisabled: boolean
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, name: string) => Promise<void>
+  /** Finish an emailed-code sign-in (the code was requested with requestOtp). */
+  loginWithCode: (email: string, code: string, name?: string) => Promise<void>
+  /** Sign in with the ID token Google Identity Services returned. */
+  loginWithGoogle: (credential: string) => Promise<void>
   logout: () => void
 }
 
@@ -42,14 +46,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(result.user)
   }, [])
 
+  const loginWithCode = useCallback(async (email: string, code: string, name?: string) => {
+    const result = await verifyOtp(email, code, name)
+    setToken(result.access_token)
+    setUser(result.user)
+  }, [])
+
+  const loginWithGoogle = useCallback(async (credential: string) => {
+    const result = await googleLoginRequest(credential)
+    setToken(result.access_token)
+    setUser(result.user)
+  }, [])
+
   const logout = useCallback(() => {
     clearToken()
     setUser(null)
   }, [])
 
   const value = useMemo<AuthState>(
-    () => ({ user, loading, authDisabled: user?.id === ANONYMOUS_ID, login, register, logout }),
-    [user, loading, login, register, logout],
+    () => ({ user, loading, authDisabled: user?.id === ANONYMOUS_ID, login, register, loginWithCode, loginWithGoogle, logout }),
+    [user, loading, login, register, loginWithCode, loginWithGoogle, logout],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

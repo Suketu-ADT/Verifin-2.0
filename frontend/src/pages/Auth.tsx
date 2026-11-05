@@ -5,7 +5,9 @@ import { ShieldCheck, FileSearch, Cpu, ArrowLeft, Loader2, CheckCircle2, Eye, Ey
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { useAuth } from "../lib/AuthContext"
-import { errorMessage } from "../lib/api"
+import { errorMessage, fetchAuthOptions, type AuthOptions } from "../lib/api"
+import { EmailCodeForm } from "../components/EmailCodeForm"
+import { GoogleSignInButton } from "../components/GoogleSignInButton"
 
 export default function Auth() {
   const navigate = useNavigate()
@@ -32,8 +34,36 @@ export default function Auth() {
   
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { login, register, user } = useAuth()
+  const { login, register, loginWithGoogle, user } = useAuth()
   const destination = (location.state as { from?: string } | null)?.from ?? "/dashboard"
+
+  // which sign-in methods the server offers; until it answers, only the password form shows
+  const [options, setOptions] = useState<AuthOptions | null>(null)
+  const [loginMethod, setLoginMethod] = useState<"password" | "code">("password")
+  useEffect(() => {
+    fetchAuthOptions().then(setOptions).catch(() => setOptions(null))
+  }, [])
+
+  const [googleError, setGoogleError] = useState<string | null>(null)
+  const handleGoogle = async (credential: string) => {
+    setGoogleError(null)
+    try {
+      await loginWithGoogle(credential)
+      navigate(destination, { replace: true })
+    } catch (err) {
+      setGoogleError(errorMessage(err, "Could not sign in with Google. Try again."))
+    }
+  }
+
+  const googleBlock = options?.google_client_id ? (
+    <div className="mt-6">
+      <div className="mb-4 flex items-center gap-3 text-[10px] uppercase tracking-widest text-slate-500">
+        <span className="h-px flex-1 bg-white/10" /> or <span className="h-px flex-1 bg-white/10" />
+      </div>
+      <GoogleSignInButton clientId={options.google_client_id} onCredential={handleGoogle} />
+      {googleError && <p role="alert" className="mt-3 text-center text-xs text-rose-400">{googleError}</p>}
+    </div>
+  ) : null
 
   // already signed in: nothing to do here
   useEffect(() => {
@@ -169,6 +199,26 @@ export default function Auth() {
                     Sign in to your organisation's workspace.
                   </p>
                   
+                  {options?.email_otp && (
+                    <div className="mb-5 grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-white/[0.03] p-1 text-xs font-semibold" role="tablist">
+                      {(["password", "code"] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          role="tab"
+                          aria-selected={loginMethod === m}
+                          onClick={() => { setLoginMethod(m); setError(null) }}
+                          className={`rounded-md py-1.5 transition-colors ${loginMethod === m ? "bg-white/10 text-white" : "text-slate-400 hover:text-slate-200"}`}
+                        >
+                          {m === "password" ? "Password" : "Email code"}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {loginMethod === "code" && options?.email_otp ? (
+                    <EmailCodeForm onDone={() => navigate(destination, { replace: true })} />
+                  ) : (
                   <form onSubmit={handleLoginSubmit} className="space-y-4">
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-slate-300">Email Address</label>
@@ -199,6 +249,8 @@ export default function Auth() {
                       {isLoading ? <Loader2 className="h-5 w-5 animate-spin text-black/70" /> : "Sign In"}
                     </Button>
                   </form>
+                  )}
+                  {googleBlock}
                 </motion.div>
               ) : (
                 <motion.div
@@ -290,6 +342,7 @@ export default function Auth() {
                       {isLoading ? <Loader2 className="h-5 w-5 animate-spin text-black/70" /> : "Create Account"}
                     </Button>
                   </form>
+                  {googleBlock}
                 </motion.div>
               )}
             </AnimatePresence>

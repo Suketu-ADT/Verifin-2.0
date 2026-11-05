@@ -4,7 +4,7 @@ Rate limiting with an in-memory sliding window.
 State is per process: behind several instances each applies its own limit, so the effective limit grows with
 the instance count. For a shared limit, put the same rules in the gateway or back this class with Redis.
 
-* ``RateLimitMiddleware`` limits every client address, with a stricter limit on login and registration.
+* ``RateLimitMiddleware`` limits every client address, with a stricter limit on sign-in and registration.
 * ``limit_heavy`` is a dependency for expensive endpoints (uploads, verification, LLM calls), keyed by the
   authenticated principal so one user cannot use up the whole instance.
 """
@@ -26,6 +26,8 @@ from app.security.principal import Principal, get_principal
 
 WINDOW_SECONDS = 60.0
 MAX_TRACKED_KEYS = 50_000
+# every way of proving who you are: these get the stricter per-address limit
+AUTH_PATHS = ("/auth/login", "/auth/register", "/auth/google", "/auth/otp/request", "/auth/otp/verify")
 
 
 class SlidingWindowLimiter:
@@ -92,7 +94,7 @@ class RateLimitMiddleware:
             return
 
         address = client_address(scope)
-        if path.endswith(("/auth/login", "/auth/register")):
+        if path.endswith(AUTH_PATHS):
             name, limit = "auth", settings.rate_limit_auth_per_minute
         else:
             name, limit = "client", settings.rate_limit_per_minute

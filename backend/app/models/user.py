@@ -12,6 +12,7 @@ class UserModel(BaseModel):
     email: str
     name: Optional[str] = None
     google_id: Optional[str] = None
+    email_verified: bool = Field(default=False, description="True once the owner proved the address (emailed code or Google)")
     tenant_id: str = Field(default="public", description="Organisation the user belongs to; data never crosses tenants")
     role: str = Field(default="analyst", description="viewer, analyst or admin")
     password_hash: Optional[str] = None
