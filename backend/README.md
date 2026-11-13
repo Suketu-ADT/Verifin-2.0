@@ -147,6 +147,7 @@ The backend implements the exact contract required by `frontend/src/lib/api.ts`:
 | `POST` | `/api/verification/start` | Queue verification session | `VerificationResultResponse` |
 | `GET` | `/api/verification/{id}/results` | Fetch session & claim status | `VerificationResultResponse` |
 | `POST` | `/api/demo/run` | Execute canned reference demo | `DemoRunResponse` |
+| `GET` | `/api/v1/analytics/overview?days=30` | Aggregate statistics for the Analytics page (v1 only; 1-365 days) | `AnalyticsOverview` |
 
 ---
 

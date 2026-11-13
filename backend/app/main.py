@@ -18,6 +18,7 @@ from app.api import (
     review_router,
     audit_router,
     admin_router,
+    analytics_router,
     system_router,
     verification_router,
 )
@@ -118,6 +119,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(audit_router, prefix="/api/v1")  # new in v1: no deprecated unversioned alias
     app.include_router(admin_router, prefix="/api/v1")
+    app.include_router(analytics_router, prefix="/api/v1")  # new in v1: no deprecated unversioned alias
     for router in resource_routers:
         app.include_router(router, prefix="/api/v1")
         app.include_router(router, prefix="/api", deprecated=True)

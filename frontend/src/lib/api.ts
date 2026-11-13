@@ -714,3 +714,81 @@ export async function revokeOtherSessions(): Promise<TokenResponse> {
 export async function updateProfile(name: string): Promise<AuthUser> {
   return (await api.patch<AuthUser>('/api/v1/auth/me', { name })).data;
 }
+
+// ---------------------------------------------------------------------------
+// Analytics
+// ---------------------------------------------------------------------------
+
+export interface AnalyticsTotals {
+  verifications: number;
+  claims: number;
+  supported: number;
+  contradicted: number;
+  unverified: number;
+  hallucination_rate: number;
+  unverified_rate: number;
+  support_rate: number;
+  average_score: number;
+}
+
+export interface AnalyticsTrendPoint {
+  date: string;
+  verifications: number;
+  claims: number;
+  supported: number;
+  contradicted: number;
+  unverified: number;
+  hallucination_rate: number;
+}
+
+export interface AnalyticsDocument {
+  document_id: string;
+  document_name: string;
+  verifications: number;
+  claims: number;
+  supported: number;
+  contradicted: number;
+  unverified: number;
+  hallucination_rate: number;
+  unverified_rate: number;
+}
+
+export interface AnalyticsClaimType {
+  claim_type: string;
+  claims: number;
+  supported: number;
+  contradicted: number;
+  unverified: number;
+  hallucination_rate: number;
+  unverified_rate: number;
+}
+
+export interface AnalyticsTopClaim {
+  session_id: string;
+  claim_id: string;
+  claim_text: string;
+  verdict: string;
+  claim_type: string;
+  hallucination_type: string;
+  risk_score: number;
+  document_name: string;
+}
+
+export interface AnalyticsOverview {
+  days: number;
+  since: string;
+  totals: AnalyticsTotals;
+  previous: AnalyticsTotals;
+  trend: AnalyticsTrendPoint[];
+  documents: AnalyticsDocument[];
+  claim_types: AnalyticsClaimType[];
+  hallucination_types: { name: string; claims: number }[];
+  rules: { name: string; claims: number }[];
+  risk_levels: { name: string; verifications: number }[];
+  score_bins: { lower: number; upper: number; verifications: number }[];
+  top_claims: AnalyticsTopClaim[];
+}
+
+export async function getAnalyticsOverview(days: number): Promise<AnalyticsOverview> {
+  return (await api.get<AnalyticsOverview>('/api/v1/analytics/overview', { params: { days } })).data;
+}

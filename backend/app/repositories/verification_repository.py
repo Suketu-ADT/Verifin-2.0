@@ -85,6 +85,16 @@ class VerificationRepository:
         await self.claims_collection.insert_many(claim_dicts)
         return claims
 
+    async def list_claims_for_sessions(self, session_ids: List[str]) -> List[ClaimModel]:
+        """All claims of the given sessions, fetched in batches (used by the analytics page)."""
+        results: List[ClaimModel] = []
+        for start in range(0, len(session_ids), 200):
+            cursor = self.claims_collection.find({"session_id": {"$in": session_ids[start:start + 200]}})
+            async for item in cursor:
+                item.pop("_id", None)
+                results.append(ClaimModel.model_validate(item))
+        return results
+
     async def get_claims_by_session_id(self, session_id: str) -> List[ClaimModel]:
         """Retrieves all claims associated with a given verification session."""
         cursor = self.claims_collection.find({"session_id": session_id})

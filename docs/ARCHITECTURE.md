@@ -67,6 +67,16 @@ A statement's risk is derived from its claims: it is as risky as its worst claim
 | Observability | `app/observability/` | request IDs and W3C `traceparent`, JSON logs, Prometheus metrics |
 | Frontend | `frontend/src/` | React 19, TypeScript, Tailwind; token held in `sessionStorage`; route guards by role |
 
+### Analytics
+
+`GET /api/v1/analytics/overview?days=30` (viewer and up) feeds the Analytics page. It loads the organisation's newest 1,000 finished
+verifications and their claims, and `app/services/analytics_service.py` (pure functions, no database access) turns them into totals,
+a zero-filled daily trend, per-document and per-claim-type verdict mixes, kinds of hallucination, deciding rules, risk levels, a score
+histogram and the highest-risk flagged claims. The window is `days` whole UTC calendar days ending today, and the same-length window
+before it supplies the comparison. A CONTRADICTED claim counts as a hallucination and UNVERIFIED as unsupported; the hallucination
+rate is contradicted claims over all claims. The page shows every chart as a table too, and the verdict colours were checked for
+colour-blind separation against the dark card surface.
+
 ### Background jobs
 
 `POST /verification/jobs` returns `202` with a status URL immediately. An in-process `JobRunner` runs jobs under a bounded
