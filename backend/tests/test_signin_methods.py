@@ -32,6 +32,7 @@ def secured_app(monkeypatch):
     monkeypatch.setattr(settings, "jwt_secret", "test-secret-" + "x" * 32)
     monkeypatch.setattr(settings, "rate_limit_enabled", False)
     monkeypatch.setattr(settings, "google_client_id", CLIENT_ID)
+    monkeypatch.setattr(settings, "email_otp_enabled", True)
     for name in ("smtp_host", "smtp_username", "smtp_password", "smtp_from"):  # never use a developer's real mail settings
         monkeypatch.setattr(settings, name, None)
     monkeypatch.setattr(signin, "_google_signing_key", lambda credential: KEY.public_key())
@@ -54,6 +55,11 @@ async def client():
         yield c
 
 
+async def existing_account(email: str, password: str = "correct-horse-battery"):
+    """An account that already exists (registration itself now needs an emailed code, so create it directly)."""
+    return await auth_api._new_user(email, password, None, tenant_id="t-" + email, role="admin")
+
+
 def google_token(**overrides):
     now = int(time.time())
     claims = {"iss": "https://accounts.google.com", "aud": CLIENT_ID, "sub": "g-123", "email": "Person@Example.com",
@@ -68,12 +74,13 @@ def google_token(**overrides):
 @pytest.mark.asyncio
 async def test_options_report_what_is_available(client, monkeypatch):
     body = (await client.get(f"{V1}/auth/options")).json()
-    assert body == {"password": True, "google_client_id": CLIENT_ID, "email_otp": True, "registration": True}
+    assert body == {"password": True, "google_client_id": CLIENT_ID, "email_otp": True, "registration": True,
+                    "registration_needs_code": True}
 
     monkeypatch.setattr(settings, "google_client_id", None)
     monkeypatch.setattr(settings, "environment", "production")  # production without SMTP: codes must not be offered
     body = (await client.get(f"{V1}/auth/options")).json()
-    assert body["google_client_id"] is None and body["email_otp"] is False
+    assert body["google_client_id"] is None and body["email_otp"] is False and body["registration_needs_code"] is False
 
 
 # ── Email codes ──────────────────────────────────────────────────────────────
@@ -98,10 +105,10 @@ async def test_code_signs_in_a_new_address_and_works_once(client, sent):
 
 @pytest.mark.asyncio
 async def test_code_for_an_existing_user_keeps_their_account(client, sent):
-    reg = await client.post(f"{V1}/auth/register", json={"email": "a@example.com", "password": "correct-horse-battery"})
+    reg = await existing_account("a@example.com")
     await client.post(f"{V1}/auth/otp/request", json={"email": "a@example.com"})
     ok = await client.post(f"{V1}/auth/otp/verify", json={"email": "a@example.com", "code": sent[0][1]})
-    assert ok.status_code == 200 and ok.json()["user"]["id"] == reg.json()["user"]["id"]
+    assert ok.status_code == 200 and ok.json()["user"]["id"] == reg.id
 
 
 @pytest.mark.asyncio
@@ -142,8 +149,8 @@ async def test_unknown_address_gets_no_code_when_registration_is_closed(client, 
 
 @pytest.mark.asyncio
 async def test_disabled_user_gets_no_code(client, sent):
-    reg = await client.post(f"{V1}/auth/register", json={"email": "e@example.com", "password": "correct-horse-battery"})
-    await UserRepository().update_user(reg.json()["user"]["id"], {"is_active": False})
+    reg = await existing_account("e@example.com")
+    await UserRepository().update_user(reg.id, {"is_active": False})
     r = await client.post(f"{V1}/auth/otp/request", json={"email": "e@example.com"})
     assert r.status_code == 202 and sent == []
 
@@ -161,6 +168,77 @@ async def test_codes_unavailable_in_production_without_smtp(client, monkeypatch)
     monkeypatch.setattr(settings, "environment", "production")
     r = await client.post(f"{V1}/auth/otp/request", json={"email": "g@example.com"})
     assert r.status_code == 503
+
+
+# ── Password sign-up must prove the address ──────────────────────────────────
+
+STRONG = "Correct-Horse-9"
+
+
+async def _register(client, email, **extra):
+    return await client.post(f"{V1}/auth/register", json={"email": email, "password": STRONG, "name": "Pat", **extra})
+
+
+@pytest.mark.asyncio
+async def test_register_needs_the_emailed_code(client, sent):
+    assert (await _register(client, "new@example.com")).status_code == 400  # no code at all
+    assert await UserRepository().get_user_by_email("new@example.com") is None
+
+    await client.post(f"{V1}/auth/otp/request", json={"email": "new@example.com"})
+    (_, code), = sent
+    ok = await _register(client, "new@example.com", code=code)
+    assert ok.status_code == 201
+    assert (await UserRepository().get_user_by_email("new@example.com")).email_verified is True
+    assert (await client.post(f"{V1}/auth/login", json={"email": "new@example.com", "password": STRONG})).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_a_wrong_or_borrowed_code_cannot_register(client, sent):
+    await client.post(f"{V1}/auth/otp/request", json={"email": "mine@example.com"})
+    (_, code), = sent
+    bad = "000000" if code != "000000" else "111111"
+    assert (await _register(client, "mine@example.com", code=bad)).status_code == 401
+    # a code issued to my address does not open someone else's
+    assert (await _register(client, "victim@example.com", code=code)).status_code == 401
+    assert await UserRepository().get_user_by_email("victim@example.com") is None
+    assert await UserRepository().get_user_by_email("mine@example.com") is None
+
+
+@pytest.mark.asyncio
+async def test_registration_code_works_once(client, sent):
+    await client.post(f"{V1}/auth/otp/request", json={"email": "once@example.com"})
+    (_, code), = sent
+    assert (await _register(client, "once@example.com", code=code)).status_code == 201
+    assert (await _register(client, "once@example.com", code=code)).status_code == 409  # exists; code is spent anyway
+
+
+@pytest.mark.asyncio
+async def test_a_refused_sign_up_does_not_spend_the_code(client, sent):
+    await client.post(f"{V1}/auth/otp/request", json={"email": "keep@example.com"})
+    (_, code), = sent
+    weak = await client.post(f"{V1}/auth/register", json={"email": "keep@example.com", "password": "short", "name": "K", "code": code})
+    assert weak.status_code == 422
+    assert (await _register(client, "keep@example.com", code=code)).status_code == 201  # same code still good
+
+
+@pytest.mark.asyncio
+async def test_squatting_an_address_with_a_password_is_no_longer_possible(client, sent):
+    """The attack the code closes: register a victim's address, wait for them to sign in some other way."""
+    assert (await _register(client, "victim@example.com")).status_code == 400
+    await client.post(f"{V1}/auth/otp/request", json={"email": "victim@example.com"})
+    (_, code), = sent
+    ok = await client.post(f"{V1}/auth/otp/verify", json={"email": "victim@example.com", "code": code})
+    assert ok.status_code == 200  # the victim gets a fresh account that only they can open
+    assert (await client.post(f"{V1}/auth/login", json={"email": "victim@example.com", "password": STRONG})).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_register_without_a_way_to_send_codes_still_works_but_is_unverified(client, monkeypatch):
+    monkeypatch.setattr(settings, "environment", "production")  # no SMTP: no codes
+    assert (await client.get(f"{V1}/auth/options")).json()["registration_needs_code"] is False
+    ok = await _register(client, "plain@example.com")
+    assert ok.status_code == 201
+    assert (await UserRepository().get_user_by_email("plain@example.com")).email_verified is False
 
 
 # ── Google ───────────────────────────────────────────────────────────────────
@@ -181,9 +259,9 @@ async def test_google_creates_an_account_then_signs_in_again(client):
 
 @pytest.mark.asyncio
 async def test_google_links_to_the_account_with_the_same_email(client):
-    reg = await client.post(f"{V1}/auth/register", json={"email": "person@example.com", "password": "correct-horse-battery"})
+    reg = await existing_account("person@example.com")
     g = await client.post(f"{V1}/auth/google", json={"credential": google_token()})
-    assert g.json()["user"]["id"] == reg.json()["user"]["id"]
+    assert g.json()["user"]["id"] == reg.id
 
 
 @pytest.mark.asyncio

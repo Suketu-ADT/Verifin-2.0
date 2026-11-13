@@ -43,7 +43,7 @@ This is a design-level assessment by the authors. It is not an independent penet
 | 13 | Public sign-up abuse | `ALLOW_REGISTRATION=false` in the deployed configuration; auth rate limit | while sign-up is on, anyone can create a tenant and consume the free quota |
 | 14 | Exposure of operational data | `/metrics` is hidden in production unless `METRICS_TOKEN` is set; API docs are off outside debug; error responses omit internals when `DEBUG=false` and carry a request ID | logs include request paths and user IDs; they are only as private as the log destination |
 | 15 | Database exposure | TLS; credentials in Secret Manager; the application user has no admin role if created as documented | the Atlas free tier cannot use private networking, so the allowlist is `0.0.0.0/0` and the password is the only barrier |
-| 16 | Guessing or abusing emailed sign-in codes, or forged Google logins | codes are 6 random digits, stored only as an HMAC bound to the address, single use, expire in 10 minutes, destroyed after 5 wrong guesses, limited to one per 45 s and 6 per hour per address, and requested through an endpoint that answers identically for known and unknown addresses; Google ID tokens are verified server-side (RS256 signature against Google's keys, issuer, audience = this app's client ID, expiry, verified email) and an account linked to one Google ID refuses another | the guess counter lives in the database, but the one-per-45-s and per-hour send limits are in memory per instance, so several instances would each allow them; a mailbox takeover is a sign-in takeover; the dev-only fallback logs codes, and is disabled when `ENVIRONMENT=production` without SMTP |
+| 16 | Guessing or abusing emailed sign-in codes, or forged Google logins | codes are 6 random digits, stored only as an HMAC bound to the address, single use, expire in 10 minutes, destroyed after 5 wrong guesses, limited to one per 45 s and 6 per hour per address, and requested through an endpoint that answers identically for known and unknown addresses; password sign-up must present such a code, so an address cannot be registered by someone who does not own it; Google ID tokens are verified server-side (RS256 signature against Google's keys, issuer, audience = this app's client ID, expiry, verified email) and an account linked to one Google ID refuses another | the guess counter lives in the database, but the one-per-45-s and per-hour send limits are in memory per instance, so several instances would each allow them; a mailbox takeover is a sign-in takeover; the dev-only fallback logs codes, and is disabled when `ENVIRONMENT=production` without SMTP |
 
 ## Known gaps
 
@@ -52,9 +52,11 @@ Items to disclose rather than discover:
 - No independent penetration test, no formal review of the dependency tree beyond automated scans.
 - No Content-Security-Policy, no token revocation list, no multi-factor authentication, no account lockout beyond rate
   limits, no password reset (an emailed code or Google sign-in reaches the same account, so it serves as recovery).
-- Registering with a password does not verify the email address. Someone could register a victim's address with a password
-  they know before the victim ever signs in; the victim's later Google or code sign-in would land in that account. Close
-  sign-up (`ALLOW_REGISTRATION=false`) or require the code route for new accounts if that matters for your deployment.
+- Registering with a password requires an emailed code whenever the server can send one, so an address cannot be claimed by
+  someone who does not control it. Where it cannot (production with no SMTP configured), registration still works without
+  the code and the account is stored as unverified; an attacker could then register a victim's address with a password
+  they know, and the victim's later Google or code sign-in would land in that account. Configure SMTP, or close sign-up
+  (`ALLOW_REGISTRATION=false`), for any deployment where that matters.
 - The rate limiter, job queue and audit-chain writer assume a single process. Running more than one instance weakens limits
   and can fork a tenant's audit chain (the unique index then rejects the second writer, which is logged and counted).
 - Uploaded files live on ephemeral disk; there is no malware scanning of uploads.

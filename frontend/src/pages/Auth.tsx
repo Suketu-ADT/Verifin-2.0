@@ -5,7 +5,7 @@ import { ShieldCheck, FileSearch, Cpu, ArrowLeft, Loader2, CheckCircle2, Eye, Ey
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { useAuth } from "../lib/AuthContext"
-import { errorMessage, fetchAuthOptions, type AuthOptions } from "../lib/api"
+import { errorMessage, fetchAuthOptions, requestOtp, type AuthOptions } from "../lib/api"
 import { EmailCodeForm } from "../components/EmailCodeForm"
 import { GoogleSignInButton } from "../components/GoogleSignInButton"
 
@@ -30,6 +30,9 @@ export default function Auth() {
   const [signupEmail, setSignupEmail] = useState("")
   const [signupPassword, setSignupPassword] = useState("")
   const [signupConfirm, setSignupConfirm] = useState("")
+  const [signupCode, setSignupCode] = useState("")
+  const [codeSent, setCodeSent] = useState(false)
+  const [resendWait, setResendWait] = useState(0)
   const [showSignupPassword, setShowSignupPassword] = useState(false)
   
   const [isLoading, setIsLoading] = useState(false)
@@ -92,13 +95,38 @@ export default function Auth() {
     }
   }
 
+  useEffect(() => {
+    if (resendWait <= 0) return
+    const timer = setTimeout(() => setResendWait((w) => w - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [resendWait])
+
+  const resendSignupCode = async () => {
+    if (resendWait > 0 || isLoading) return
+    setError(null)
+    try {
+      const sent = await requestOtp(signupEmail.trim())
+      setSignupCode("")
+      setResendWait(sent.resend_after_seconds)
+    } catch (err) {
+      setError(errorMessage(err, "Could not send a code. Check your connection and try again."))
+    }
+  }
+
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!signupName || !signupEmail || !signupPassword || !signupConfirm || !allRulesPassed || signupPassword !== signupConfirm) return
     setIsLoading(true)
     setError(null)
     try {
-      await register(signupEmail.trim(), signupPassword, signupName.trim())
+      if (options?.registration_needs_code && !codeSent) {
+        const sent = await requestOtp(signupEmail.trim())
+        setCodeSent(true)
+        setSignupCode("")
+        setResendWait(sent.resend_after_seconds)
+        return
+      }
+      await register(signupEmail.trim(), signupPassword, signupName.trim(), signupCode)
       navigate("/dashboard", { replace: true })
     } catch (err) {
       setError(errorMessage(err, "Could not create the account. Check your connection and try again."))
@@ -282,7 +310,7 @@ export default function Auth() {
                       <Input 
                         type="email" 
                         value={signupEmail}
-                        onChange={(e) => setSignupEmail(e.target.value)}
+                        onChange={(e) => { setSignupEmail(e.target.value); setCodeSent(false); setSignupCode("") }}
                         placeholder="you@example.com" 
                         className="h-11 bg-white/[0.03] border-white/10 focus-visible:ring-amber-500 text-sm" 
                         required
@@ -337,9 +365,31 @@ export default function Auth() {
                       )}
                     </div>
                     
+                    {codeSent && (
+                      <div className="space-y-1.5 rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-3">
+                        <label className="text-xs font-semibold text-slate-200">6-digit code sent to {signupEmail.trim()}</label>
+                        <Input
+                          value={signupCode}
+                          onChange={(e) => setSignupCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          placeholder="123456"
+                          className="h-11 bg-white/[0.03] border-white/10 focus-visible:ring-amber-500 text-center text-lg tracking-[0.4em] font-mono"
+                          autoFocus
+                          required
+                        />
+                        <div className="flex justify-between text-xs pt-1">
+                          <span className="text-slate-500">Expires in 10 minutes</span>
+                          <button type="button" onClick={resendSignupCode} disabled={resendWait > 0 || isLoading} className="text-amber-400 hover:text-amber-300 disabled:text-slate-600">
+                            {resendWait > 0 ? `Resend in ${resendWait}s` : "Resend code"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {error && <p role="alert" className="text-xs text-rose-400 mt-4">{error}</p>}
-                    <Button type="submit" disabled={isLoading || !allRulesPassed || (signupPassword !== signupConfirm && signupConfirm.length > 0)} className="w-full h-11 text-sm font-bold mt-6 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border-none shadow-lg shadow-amber-500/20">
-                      {isLoading ? <Loader2 className="h-5 w-5 animate-spin text-black/70" /> : "Create Account"}
+                    <Button type="submit" disabled={isLoading || !allRulesPassed || (signupPassword !== signupConfirm && signupConfirm.length > 0) || (codeSent && signupCode.length < 6)} className="w-full h-11 text-sm font-bold mt-6 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border-none shadow-lg shadow-amber-500/20">
+                      {isLoading ? <Loader2 className="h-5 w-5 animate-spin text-black/70" /> : options?.registration_needs_code && !codeSent ? "Email me a verification code" : "Create Account"}
                     </Button>
                   </form>
                   {googleBlock}

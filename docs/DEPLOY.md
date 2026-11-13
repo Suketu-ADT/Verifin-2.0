@@ -143,7 +143,8 @@ GOOGLE_CLIENT_ID=1234567890-abcdef.apps.googleusercontent.com
 ```
 
 Without SMTP, codes are only written to the API log and only outside production; with `ENVIRONMENT=production` and no SMTP the code
-option is hidden.
+option is hidden. Whenever a code can be sent, creating an account with a password also needs one (the Sign Up form asks for it
+after the details), which proves the address belongs to the person; without SMTP in production sign-up skips that step.
 
 Google console (free): console.cloud.google.com, APIs & Services, OAuth consent screen (External, add yourself as a test user),
 then Credentials, Create credentials, OAuth client ID, Web application. Under **Authorized JavaScript origins** add the exact

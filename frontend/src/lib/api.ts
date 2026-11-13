@@ -504,8 +504,8 @@ export async function loginRequest(email: string, password: string): Promise<Tok
   return (await api.post<TokenResponse>('/api/v1/auth/login', { email, password })).data;
 }
 
-export async function registerRequest(email: string, password: string, name: string): Promise<TokenResponse> {
-  return (await api.post<TokenResponse>('/api/v1/auth/register', { email, password, name })).data;
+export async function registerRequest(email: string, password: string, name: string, code?: string): Promise<TokenResponse> {
+  return (await api.post<TokenResponse>('/api/v1/auth/register', { email, password, name, code: code || undefined })).data;
 }
 
 /** Which sign-in methods the server offers. */
@@ -514,6 +514,8 @@ export interface AuthOptions {
   google_client_id: string | null;
   email_otp: boolean;
   registration: boolean;
+  /** Sign-up must prove the address with an emailed code first. */
+  registration_needs_code: boolean;
 }
 
 export async function fetchAuthOptions(): Promise<AuthOptions> {

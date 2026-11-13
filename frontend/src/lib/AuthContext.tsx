@@ -9,7 +9,7 @@ interface AuthState {
   /** true when the backend runs without authentication (local development) */
   authDisabled: boolean
   login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, name: string) => Promise<void>
+  register: (email: string, password: string, name: string, code?: string) => Promise<void>
   /** Finish an emailed-code sign-in (the code was requested with requestOtp). */
   loginWithCode: (email: string, code: string, name?: string) => Promise<void>
   /** Sign in with the ID token Google Identity Services returned. */
@@ -40,8 +40,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(result.user)
   }, [])
 
-  const register = useCallback(async (email: string, password: string, name: string) => {
-    const result = await registerRequest(email, password, name)
+  const register = useCallback(async (email: string, password: string, name: string, code?: string) => {
+    const result = await registerRequest(email, password, name, code)
     setToken(result.access_token)
     setUser(result.user)
   }, [])

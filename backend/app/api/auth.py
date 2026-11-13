@@ -77,10 +77,12 @@ class AuthOptions(BaseModel):
     google_client_id: Optional[str] = None
     email_otp: bool = False
     registration: bool = True
+    registration_needs_code: bool = False  # sign-up must prove the address first (true whenever a code can be emailed)
 
 
 class RegisterRequest(Credentials):
     name: Optional[str] = Field(default=None, max_length=120)
+    code: Optional[str] = Field(default=None, min_length=4, max_length=12)  # the emailed code; required when the server can send one
 
 
 class CreateUserRequest(Credentials):
@@ -168,13 +170,13 @@ def _key_response(k: ApiKeyModel) -> ApiKeyResponse:
                           expires_at=k.expires_at, last_used_at=k.last_used_at, created_at=k.created_at)
 
 
-async def _new_user(email: str, password: str, name: Optional[str], tenant_id: str, role: str) -> UserModel:
+async def _new_user(email: str, password: str, name: Optional[str], tenant_id: str, role: str, email_verified: bool = False) -> UserModel:
     repo = UserRepository()
     if await repo.get_user_by_email(email):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with this email already exists.")
     password_hash = await run_in_threadpool(hash_password, password)
     user = UserModel(id=str(uuid.uuid4()), email=email, name=name, tenant_id=tenant_id, role=role,
-                     password_hash=password_hash)
+                     password_hash=password_hash, email_verified=email_verified)
     await repo.create_user(user)
     return user
 
@@ -246,14 +248,25 @@ async def _sign_in_verified_email(email: str, name: Optional[str], method: str, 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest) -> TokenResponse:
-    """Creates a new organisation and its first admin. Disabled when ``ALLOW_REGISTRATION=false``."""
+    """Creates a new organisation and its first admin. Disabled when ``ALLOW_REGISTRATION=false``.
+
+    When a code can be emailed, the address must be proven first: without that, anyone could register a victim's address with a
+    password they know and later share the account the victim signs in to with Google or an emailed code.
+    """
     if not settings.allow_registration:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Self-service registration is disabled.")
     _check_password_strength(body.password)
-    user = await _new_user(body.email, body.password, body.name, tenant_id=str(uuid.uuid4()), role="admin")
+    if await UserRepository().get_user_by_email(body.email):  # before the code is spent
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with this email already exists.")
+    verified = _otp_available()
+    if verified:
+        if not body.code:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter the code we emailed to this address.")
+        await _consume_code(body.email, body.code.strip(), "register")
+    user = await _new_user(body.email, body.password, body.name, tenant_id=str(uuid.uuid4()), role="admin", email_verified=verified)
     logger.info(f"Registered new tenant {user.tenant_id} with admin {user.id}")
     await audit.record("auth.register", tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
-                       actor_role=user.role, resource_type="user", resource_id=user.id)
+                       actor_role=user.role, resource_type="user", resource_id=user.id, details={"email_verified": verified})
     return _token_response(user)
 
 
@@ -285,7 +298,8 @@ async def login(body: Credentials) -> TokenResponse:
 async def auth_options() -> AuthOptions:
     """Public: which sign-in methods this server offers, so the page shows only the working ones."""
     return AuthOptions(google_client_id=settings.google_client_id or None, email_otp=_otp_available(),
-                       registration=settings.allow_registration)
+                       registration=settings.allow_registration,
+                       registration_needs_code=settings.allow_registration and _otp_available())
 
 
 @router.post("/otp/request", status_code=status.HTTP_202_ACCEPTED)
@@ -309,23 +323,28 @@ async def otp_request(body: EmailRequest, background: BackgroundTasks) -> dict:
     return {"detail": "If this address can sign in, a code is on its way.", "resend_after_seconds": settings.otp_resend_seconds}
 
 
-@router.post("/otp/verify", response_model=TokenResponse)
-async def otp_verify(body: OtpVerifyRequest) -> TokenResponse:
+async def _consume_code(email: str, code: str, method: str) -> None:
+    """Check a submitted code against the stored challenge and spend it. Raises 401 with one message for every failure."""
     repo = OtpRepository()
     rejected = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="That code is not valid or has expired.")
-    challenge = await repo.get(body.email)
+    challenge = await repo.get(email)
     if challenge is None:
         raise rejected
     if _as_utc(challenge["expires_at"]) <= datetime.now(timezone.utc) or int(challenge.get("attempts", 0)) >= settings.otp_max_attempts:
-        await repo.delete(body.email)
+        await repo.delete(email)
         raise rejected
-    if not code_matches(body.email, body.code.strip(), challenge["code_hash"]):
-        if await repo.record_failure(body.email) >= settings.otp_max_attempts:
-            await repo.delete(body.email)  # too many wrong guesses: the code is gone, ask for a new one
-        await audit.record("auth.login", tenant_id="_unscoped", outcome="denied", actor_id="unknown", actor_email=body.email,
-                           details={"method": "otp", "reason": "bad_code"})
+    if not code_matches(email, code, challenge["code_hash"]):
+        if await repo.record_failure(email) >= settings.otp_max_attempts:
+            await repo.delete(email)  # too many wrong guesses: the code is gone, ask for a new one
+        await audit.record("auth.login" if method == "otp" else "auth.register", tenant_id="_unscoped", outcome="denied",
+                           actor_id="unknown", actor_email=email, details={"method": method, "reason": "bad_code"})
         raise rejected
-    await repo.delete(body.email)  # a code works once
+    await repo.delete(email)  # a code works once
+
+
+@router.post("/otp/verify", response_model=TokenResponse)
+async def otp_verify(body: OtpVerifyRequest) -> TokenResponse:
+    await _consume_code(body.email, body.code.strip(), "otp")
     return _token_response(await _sign_in_verified_email(body.email, body.name, "otp"))
 
 
