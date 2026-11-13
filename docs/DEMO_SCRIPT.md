@@ -2,12 +2,14 @@
 
 About ten minutes. Every verdict below was produced by the running system on the sample report
 (`data/VERIFIN_sample_financial_report.pdf`, a synthetic seven-page annual report for "Northstar Technologies") with pipeline
-4.2 and was re-run just before this was written. Run the checks in [RUNBOOK.md](RUNBOOK.md) first; on Cloud Run, open the site
-two minutes early so the instance is awake.
+4.2 and was re-run on 13 November 2026 (the seven verdicts in Part 1 are unchanged). Run the checks in [RUNBOOK.md](RUNBOOK.md)
+first. The demo runs on your own machine: start it with `.\scripts\start_demo.ps1 -NoTunnel` and open http://localhost:8000; the
+first verification loads the models, so run the sample once before you present. A shot-by-shot plan for recording it is in
+[VIDEO_SHOT_LIST.md](VIDEO_SHOT_LIST.md).
 
 ## Setup
 
-1. Sign in as an analyst or admin. Have the sample PDF at hand.
+1. Sign in as an analyst or admin (password, *Email code*, or *Continue with Google*, whichever the server has enabled). Have the sample PDF at hand.
 2. On New Verification, click *Try the Northstar sample report*: it uploads the bundled PDF and fills in the statement below. (Uploading `data/VERIFIN_sample_financial_report.pdf` yourself works the same way; the claim extractor is optional and can take a minute on CPU.)
 
 ## Story in one line
@@ -47,11 +49,23 @@ download the report to show it is exportable.
 
 ## Part 3. The numbers (2 min)
 
-Use the results deck. Three figures to state:
+Open **Benchmark** in the sidebar (the recorded held-out results; nothing is re-run) or use the results deck. Three figures to state:
 
 - Held-out test, 240 claims, rules frozen before scoring: **macro-F1 95.2** (same on pipeline 4.2, all verdicts identical); raw NLI alone 66.8.
 - A 7B LLM judge given the same evidence: 82.2, at 12 s per claim against 1.0 s.
 - The deterministic layer, not the model size, accounts for most of the gain (leave-one-out ablation).
+
+On the Benchmark page, point at the confusion matrix (a dark diagonal is good), the bar chart of the five systems, and the
+*Confidence against accuracy* chart: say that the confidence score is an evidence-alignment score, not a probability, and that
+a bar built from one claim says little (the counts are in brackets).
+
+## Part 3b. Seeing it over time (1 min, optional)
+
+Open **Analytics**. It summarises every finished verification in your organisation: totals and the hallucination rate against
+the previous period, claims per day by verdict, which documents and claim types are most affected, and the flagged claims most
+worth reviewing (each links to its evidence). Every chart has a *Table* button. If you have only run the sample, the page will
+show a single day; say so rather than presenting it as a trend. The screenshots in the project report use generated sample data
+for this page, and the report says so.
 
 ## Part 4. Where it is weak (1 min)
 
@@ -82,7 +96,8 @@ Do not use live: the three misses above.
 
 | Problem | Do this |
 |---|---|
-| First request is slow | the instance is waking up; wait, then repeat |
+| First verification is slow | the models are loading on first use; wait, then repeat. Run the sample once before presenting |
+| *Try the Northstar sample report* says the file is empty (0 bytes) | a download manager such as Internet Download Manager is intercepting the `.pdf` request and returns nothing. Pause its browser integration, or upload `data/VERIFIN_sample_financial_report.pdf` with the file picker instead |
 | A verdict differs from this page | say so; check the pipeline version in provenance; this page is dated to version 4.2 |
 | Job seems stuck | refresh History; the job continues in the background |
 | No network | run locally: `backend` with `uvicorn app.main:app`, frontend with `npm run dev` |

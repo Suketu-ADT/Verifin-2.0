@@ -10,6 +10,7 @@ import copy
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.config import settings
@@ -34,6 +35,27 @@ class UpdateResult:
 class DeleteResult:
     def __init__(self, deleted_count: int):
         self.deleted_count = deleted_count
+
+
+def _sortable(val: Any) -> Any:
+    """A key that can always be compared with another, whatever the stored types are.
+
+    The store is saved to JSON with ``default=str``, so after a restart older timestamps come back as strings
+    while newly written ones are ``datetime`` objects. Sorting those together raised ``TypeError``; both are
+    now turned into a UTC timestamp. Values of different kinds sort in separate groups instead of failing.
+    """
+    if val is None:
+        return (0, 0)
+    if isinstance(val, str):
+        try:
+            val = datetime.fromisoformat(val)
+        except ValueError:
+            return (3, val)
+    if isinstance(val, datetime):
+        return (2, (val if val.tzinfo else val.replace(tzinfo=timezone.utc)).timestamp())
+    if isinstance(val, (int, float)):
+        return (1, val)
+    return (3, str(val))
 
 
 class FallbackCursor:
@@ -62,10 +84,7 @@ class FallbackCursor:
             reverse = self._sort_dir == -1
 
             def _sort_val(x: Dict[str, Any]) -> Any:
-                val = x.get(self._sort_key or "")
-                if val is None:
-                    return ""
-                return val
+                return _sortable(x.get(self._sort_key or ""))
 
             results.sort(key=_sort_val, reverse=reverse)
         if self._limit is not None:
