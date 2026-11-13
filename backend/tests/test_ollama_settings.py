@@ -20,7 +20,10 @@ def make_provider(monkeypatch, **overrides):
     monkeypatch.setattr(settings, "llm_max_output_tokens", 3072)
     for k, v in overrides.items():
         monkeypatch.setattr(settings, k, v)
-    return OpenAIProvider(api_key="ollama", model_name="qwen2.5:3b")
+    provider = OpenAIProvider(api_key="ollama", model_name="qwen2.5:3b")
+    # The `openai` package is optional and not installed in CI; a stand-in client keeps the provider "configured" either way.
+    provider._client = MagicMock()
+    return provider
 
 
 def fake_native(monkeypatch, sent):
