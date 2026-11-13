@@ -179,6 +179,17 @@
   .stagger > * { animation: none; }
 }
 
+/* Windows high contrast / forced colours: the browser swaps our colours for system colours, so state that relied on a tint or a
+   translucent white (current page, pressed filter, selected tab, sidebar icons) gets an explicit outline and system-colour icons. */
+@media (forced-colors: active) {
+  aside svg { color: LinkText; }
+  [aria-current="page"],
+  [aria-pressed="true"],
+  [role="tab"][aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+  nav[aria-label="Breadcrumb"] [aria-current="page"] { outline: none; }
+  .skeleton { background: GrayText; }
+}
+
 @media print {
   aside, header.app-header, .no-print { display: none !important; }
   body { background: #fff; }

@@ -128,7 +128,7 @@ Components live in `frontend/src/components/`, grouped by role. Import with the 
 | `Modal` (`modal.tsx`) | `{ open, onClose, title, description, children, footer, size: "sm" \| "md" \| "lg" }`. Traps focus, closes on Escape, restores focus to the opener |
 | `Dropdown`, `DropdownItem`, `DropdownLabel`, `DropdownSeparator` (`dropdown.tsx`) | `Dropdown({ trigger, placement, menuClassName })`; `DropdownItem({ icon, onSelect, to, danger })` |
 | `ToastProvider`, `useToast()` (`toast.tsx`) | `toast({ title, description, tone: "success" \| "error" \| "info" })`. Errors stay 8 s, others 5 s; at most four visible. The provider is mounted in `main.tsx` |
-| `Segmented`, `Tabs` (`tabs.tsx`) | `Segmented({ value, onChange, options: [{ value, label, count }], label, size })` is a compact switch (filters, Chart/Table). `Tabs({ value, onChange, tabs: [{ value, label, icon }], label })` is a `tablist` of `role="tab"` buttons (`aria-selected`, `aria-controls="panel-<value>"`; each tab is its own Tab stop, there is no roving arrow-key behaviour yet) |
+| `Segmented`, `Tabs` (`tabs.tsx`) | `Segmented({ value, onChange, options: [{ value, label, count }], label, size })` is a compact switch (filters, Chart/Table). `Tabs({ value, onChange, tabs: [{ value, label, icon }], label })` is a `tablist` of `role="tab"` buttons with a roving tabindex: only the selected tab is a Tab stop, Left/Right (wrapping), Home and End move and select. The selected tab's `aria-controls` points at `panel-<value>`; give the panel `role="tabpanel"`, that id and `aria-labelledby="tab-<value>"` |
 | `Collapse` (`collapse.tsx`) | `{ open, children, id, className }`. Smooth expand and collapse, content stays mounted and is `inert` when closed. Pair the toggle with `aria-expanded` and `aria-controls={id}` |
 
 ### `shared/` building blocks
@@ -211,15 +211,16 @@ If the palette is ever allowed to change, re-run the validator and replace these
 - **Focus**: every interactive element has a visible 2px ring (`--color-focus`; `--color-sky` inside `.on-navy`), never removed without a replacement. Focus moves into drawers and modals and returns to the opener on close.
 - **Landmarks and headings**: "Skip to content" link first, `<main id="main">`, one `<h1>` per page via `PageHeading`, headings in order; sections are named with `aria-labelledby`.
 - **Forms**: each control has a visible label (`Field`), errors and hints are associated with the control, errors are announced.
-- **Tabs, menus, expandable rows**: `Tabs` uses `tablist`/`tab` roles; `Dropdown` closes on Escape and moves with the arrow keys; `Segmented` uses `aria-pressed` buttons; expanders use `aria-expanded` and `aria-controls`; collapsed content is `inert`; clickable table rows are focusable and open on Enter.
+- **Tabs, menus, expandable rows**: `Tabs` uses `tablist`/`tab` roles with arrow-key, Home and End navigation; `Dropdown` closes on Escape and moves with the arrow keys; `Segmented` uses `aria-pressed` buttons; expanders use `aria-expanded` and `aria-controls`; collapsed content is `inert`; clickable table rows are focusable and open on Enter.
 - **Live regions**: toasts, loading states (`role="status"`) and errors (`role="alert"`) are announced.
 - **Tables**: captions, scoped headers, `aria-sort` on sortable columns.
 - **Contrast**: body text is `ink` or `muted` on `surface`/`canvas`; text on a status tint uses the `-fg` token; `faint` is decorative only.
 - **Not colour alone**: see above.
 - **Reduced motion**: see [Motion](#motion).
-- **Print**: `.no-print` and the print stylesheet hide the sidebar and header.
+- **Forced colours (Windows high contrast)**: a `@media (forced-colors: active)` block in `index.css` gives the current page, pressed filters and selected tabs an explicit `Highlight` outline (their tint disappears when the system swaps colours) and system-colour sidebar icons. Checked with browser emulation, not on a real high-contrast theme.
+- **Print**: `.no-print` and the print stylesheet hide the sidebar and header (checked with print-media emulation).
 
-Not verified by a person: a screen-reader pass, forced-colours mode and print output.
+Checked by script (Edge, Playwright): landmarks (banner, navigation, main), one `<h1>`, no unlabelled buttons or inputs, tab keyboard behaviour, forced-colours and print emulation. Not checked by a person: a real screen reader (NVDA, VoiceOver), a real OS high-contrast theme, and a physical print or PDF export of the results page.
 
 ## Responsive rules
 

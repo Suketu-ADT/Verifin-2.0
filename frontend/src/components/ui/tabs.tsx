@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import type { KeyboardEvent, ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
 interface Option<T extends string> {
@@ -48,15 +48,26 @@ export function Tabs<T extends string>({ value, onChange, tabs, label }: {
   tabs: { value: T; label: string; icon?: React.ComponentType<{ className?: string }> }[]
   label: string
 }) {
+  // Roving tabindex: only the selected tab is a Tab stop; arrow keys, Home and End move between tabs (selection follows focus).
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const keys = ["ArrowRight", "ArrowLeft", "Home", "End"]
+    if (!keys.includes(e.key)) return
+    const i = tabs.findIndex((t) => t.value === value)
+    const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length
+    e.preventDefault()
+    onChange(tabs[next].value)
+    document.getElementById(`tab-${tabs[next].value}`)?.focus()
+  }
   return (
-    <div role="tablist" aria-label={label} className="-mb-px flex gap-1 overflow-x-auto border-b border-line">
+    <div role="tablist" aria-label={label} onKeyDown={onKeyDown} className="-mb-px flex gap-1 overflow-x-auto border-b border-line">
       {tabs.map(({ value: v, label: l, icon: Icon }) => (
         <button
           key={v}
           role="tab"
           id={`tab-${v}`}
           aria-selected={value === v}
-          aria-controls={`panel-${v}`}
+          aria-controls={value === v ? `panel-${v}` : undefined}
+          tabIndex={value === v ? 0 : -1}
           onClick={() => onChange(v)}
           className={cn(
             "inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-[13px] font-medium transition-colors",

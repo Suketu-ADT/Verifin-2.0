@@ -26,7 +26,8 @@ Frontend and documentation only. No backend, API contract, authentication or ver
 - New shared components: `Button`, `Input`/`Field`, `Card`, `Badge`, `Modal`, `Dropdown`, `Toast`, `Tabs`/`Segmented`, `Skeleton`, `Collapse`, `PageHeading`, `MetricCard`, `DataTable`, `EmptyState`/`ErrorState`/`Notice`, `StatusBadge`, `RiskIndicator`, `ConfidenceIndicator`, `NliBar`, `ClaimCard`, `EvidencePanel`, `TechnicalDetails`, `ChartCard`, `VerdictDonut`.
 - Honest data: removed the non-functional header search and bell, the static "LIVE" pill and other hard-coded figures; the landing page's example scores are labelled "Illustration only"; the OCR floor and engine settings are read from the engine configuration.
 - "Unverifiable" is shown wherever the backend key is `UNVERIFIED`. A claim whose language-model reading disagrees with the final verdict now says "Language model alone: ... overruled by <rule>" instead of showing "entails" beside a Contradicted badge.
-- Responsive from 375 px (no horizontal scroll on any route) and keyboard accessible (skip link, visible focus, labelled controls, focus trap in dialogs and the drawer).
+- Responsive from 375 px (no horizontal scroll on any route) and keyboard accessible (skip link, visible focus, labelled controls, focus trap in dialogs and the drawer, arrow-key navigation in tabs).
+- Forced-colours (Windows high contrast) rules so the current page, pressed filters, selected tabs and sidebar icons stay visible.
 
 ### Documentation
 
@@ -39,5 +40,5 @@ Frontend and documentation only. No backend, API contract, authentication or ver
 ### Known limits
 
 - Report figures in `docs/report/` still show the previous interface and were not touched.
-- `Tabs` has no roving arrow-key behaviour yet; a screen-reader pass, forced-colours mode and print output were not verified by a person.
+- A real screen reader, a real OS high-contrast theme and a physical print of the results page were not checked by a person (keyboard, forced-colours and print behaviour were checked with browser emulation).
 - The main JavaScript chunk is about 1.5 MB; code-splitting is not done.
