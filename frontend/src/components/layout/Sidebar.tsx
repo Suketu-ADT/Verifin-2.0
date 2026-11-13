@@ -2,7 +2,7 @@ import { motion } from "framer-motion"
 import { Link, useLocation } from "react-router-dom"
 import { 
   FileSearch, History, Search, Activity, Settings, FileText,
-  LayoutDashboard, X, ShieldCheck, Shield, Sparkles, Layers, UserCog,
+  LayoutDashboard, X, ShieldCheck, Shield, Sparkles, Layers, UserCog, UserCircle,
 } from "lucide-react"
 import { useAuth } from "../../lib/AuthContext"
 
@@ -24,6 +24,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: "Reports", href: "/reports", icon: FileText },
     { name: "System Status", href: "/system", icon: Activity },
     { name: "Settings", href: "/settings", icon: Settings },
+    ...(user && user.id !== "anonymous" ? [{ name: "My Account", href: "/account", icon: UserCircle }] : []),
     ...(user?.role === "admin" ? [{ name: "Administration", href: "/admin", icon: UserCog }] : []),
   ]
 

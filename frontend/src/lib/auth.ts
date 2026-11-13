@@ -34,6 +34,11 @@ export interface AuthUser {
   role: "viewer" | "analyst" | "admin"
   is_active: boolean
   created_at: string
+  email_verified?: boolean
+  /** false for accounts made with Google or an emailed code that never set a password */
+  has_password?: boolean
+  google_linked?: boolean
+  last_login_at?: string | null
 }
 
 /** The backend answers as this user when authentication is switched off (local development). */

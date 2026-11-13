@@ -77,11 +77,11 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
 
           {/* User profile */}
           <div className="flex items-center gap-2 pl-1 border-l border-white/10">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-amber-400/20 to-indigo-500/20 border border-white/15 flex items-center justify-center">
+            <div onClick={() => !authDisabled && navigate("/account")} title={authDisabled ? undefined : "My account"} className={`h-8 w-8 rounded-full bg-gradient-to-tr from-amber-400/20 to-indigo-500/20 border border-white/15 flex items-center justify-center ${authDisabled ? "" : "cursor-pointer hover:border-amber-400/50"}`}>
               <User className="h-4 w-4 text-amber-300" />
             </div>
             {user && (
-              <div className="hidden md:block leading-tight max-w-[10rem]">
+              <div onClick={() => !authDisabled && navigate("/account")} className={`hidden md:block leading-tight max-w-[10rem] ${authDisabled ? "" : "cursor-pointer"}`}>
                 <div className="truncate text-xs font-semibold text-white">{authDisabled ? "Local mode" : user.name || user.email}</div>
                 <div className="text-[10px] uppercase tracking-wide text-slate-400">{authDisabled ? "auth off" : user.role}</div>
               </div>

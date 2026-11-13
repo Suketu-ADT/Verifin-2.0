@@ -53,16 +53,23 @@ def _audit_row(label: str, value: str, value_color: str = _TEXT) -> str:
     )
 
 
-def sign_in_code_email(code: str, ttl_minutes: int, name: str | None = None) -> tuple[str, str, str]:
-    """Return ``(subject, plain_text, html)`` for a sign-in code message."""
-    subject = f"{code} is your {BRAND} sign-in code"
+def _code_email(
+    code: str, ttl_minutes: int, name: str | None, *, subject: str, badge: str, heading: str, action: str, event: str,
+    ignore_note: str,
+) -> tuple[str, str, str]:
+    """Shared layout for every message that carries a one-time code. Returns ``(subject, plain_text, html)``."""
     greeting = f"Hi {name}," if name else "Hello,"
-    text = (
-        f"{greeting}\n\nYour {BRAND} sign-in code is {code}.\n\n"
-        f"It works once and expires in {ttl_minutes} minutes. Do not share it with anyone.\n"
-        "If you did not ask for it, you can ignore this email.\n\n"
-        f"{BRAND} {VERSION} - we verify claims; this code verifies you.\n"
-    )
+    text = "\n".join([
+        greeting,
+        "",
+        f"Your {BRAND} code is {code}.",
+        "",
+        f"{action[0].upper() + action[1:]}. It works once and expires in {ttl_minutes} minutes. Do not share it with anyone.",
+        ignore_note,
+        "",
+        f"{BRAND} {VERSION} - we verify claims; this code verifies you.",
+        "",
+    ])
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -91,9 +98,9 @@ def sign_in_code_email(code: str, ttl_minutes: int, name: str | None = None) -> 
         <tr><td height="3" style="height:3px;line-height:3px;font-size:0;background-color:{_AMBER};background-image:linear-gradient(90deg,{_AMBER},{_AMBER_SOFT},#6366f1);border-radius:14px 14px 0 0;">&nbsp;</td></tr>
 
         <tr><td style="padding:30px 32px 6px 32px;font-family:{_SANS};">
-          <span style="display:inline-block;padding:4px 10px;border:1px solid #14523c;border-radius:999px;background-color:#08201a;font-family:{_MONO};font-size:11px;letter-spacing:1px;color:{_EMERALD};">&#9679; SIGN-IN CHECK</span>
-          <h1 style="margin:16px 0 10px 0;font-size:24px;line-height:30px;font-weight:800;color:{_TEXT};">Verify it&rsquo;s you</h1>
-          <p style="margin:0;font-size:15px;line-height:24px;color:{_MUTED};">{escape(greeting)} enter this code on the sign-in page. It is valid for <strong style="color:{_AMBER_SOFT};">{ttl_minutes} minutes</strong> and can be used once.</p>
+          <span style="display:inline-block;padding:4px 10px;border:1px solid #14523c;border-radius:999px;background-color:#08201a;font-family:{_MONO};font-size:11px;letter-spacing:1px;color:{_EMERALD};">&#9679; {escape(badge)}</span>
+          <h1 style="margin:16px 0 10px 0;font-size:24px;line-height:30px;font-weight:800;color:{_TEXT};">{escape(heading)}</h1>
+          <p style="margin:0;font-size:15px;line-height:24px;color:{_MUTED};">{escape(greeting)} {escape(action)}. It is valid for <strong style="color:{_AMBER_SOFT};">{ttl_minutes} minutes</strong> and can be used once.</p>
         </td></tr>
 
         <tr><td align="center" style="padding:24px 32px;">
@@ -104,7 +111,7 @@ def sign_in_code_email(code: str, ttl_minutes: int, name: str | None = None) -> 
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{_INSET}" style="background-color:{_INSET};border:1px solid {_BORDER};border-radius:10px;">
             <tr><td style="padding:12px 16px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                {_audit_row("event", "auth.sign_in.code")}
+                {_audit_row("event", event)}
                 {_audit_row("valid for", f"{ttl_minutes} min")}
                 {_audit_row("uses", "1 (single use)", _EMERALD)}
               </table>
@@ -114,7 +121,7 @@ def sign_in_code_email(code: str, ttl_minutes: int, name: str | None = None) -> 
 
         <tr><td style="padding:18px 32px 28px 32px;font-family:{_SANS};font-size:13px;line-height:20px;color:#7d869a;">
           <span style="color:{_ROSE};font-weight:600;">Keep it private.</span> {BRAND} will never ask you for this code.
-          If you did not request it, ignore this email and nothing happens.
+          {escape(ignore_note)}
         </td></tr>
       </table>
     </td></tr>
@@ -131,3 +138,23 @@ def sign_in_code_email(code: str, ttl_minutes: int, name: str | None = None) -> 
 </html>
 """
     return subject, text, html
+
+
+def sign_in_code_email(code: str, ttl_minutes: int, name: str | None = None) -> tuple[str, str, str]:
+    """Return ``(subject, plain_text, html)`` for a sign-in code message."""
+    return _code_email(
+        code, ttl_minutes, name,
+        subject=f"{code} is your {BRAND} sign-in code", badge="SIGN-IN CHECK", heading="Verify it’s you",
+        action="enter this code on the sign-in page", event="auth.sign_in.code",
+        ignore_note="If you did not request it, ignore this email and nothing happens.",
+    )
+
+
+def password_reset_email(code: str, ttl_minutes: int, name: str | None = None) -> tuple[str, str, str]:
+    """Return ``(subject, plain_text, html)`` for a password-reset code message."""
+    return _code_email(
+        code, ttl_minutes, name,
+        subject=f"{code} is your {BRAND} password reset code", badge="PASSWORD RESET", heading="Reset your password",
+        action="enter this code to choose a new password", event="auth.password.reset",
+        ignore_note="If you did not ask to reset your password, ignore this email: your password has not changed.",
+    )

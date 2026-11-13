@@ -27,7 +27,7 @@ from app.repositories.api_key_repository import ApiKeyRepository
 from app.repositories.otp_repository import OtpRepository
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import audit
-from app.services.email_templates import sign_in_code_email
+from app.services.email_templates import password_reset_email, sign_in_code_email
 from app.services.mailer import send_email, smtp_configured
 from app.services.signin import GoogleTokenError, code_matches, hash_code, new_code, verify_google_credential
 from app.security.passwords import DUMMY_HASH, hash_password, verify_password
@@ -66,6 +66,28 @@ class OtpVerifyRequest(EmailRequest):
     name: Optional[str] = Field(default=None, max_length=120)  # used only when the code creates a new account
 
 
+class PasswordResetConfirm(EmailRequest):
+    code: str = Field(..., min_length=4, max_length=12)
+    new_password: str = Field(..., max_length=MAX_PASSWORD_LENGTH)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., max_length=MAX_PASSWORD_LENGTH)
+    new_password: str = Field(..., max_length=MAX_PASSWORD_LENGTH)
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Name cannot be empty.")
+        return v
+
+
 class GoogleLoginRequest(BaseModel):
     credential: str = Field(..., min_length=20, max_length=4096)  # the ID token from Google Identity Services
 
@@ -78,6 +100,7 @@ class AuthOptions(BaseModel):
     email_otp: bool = False
     registration: bool = True
     registration_needs_code: bool = False  # sign-up must prove the address first (true whenever a code can be emailed)
+    password_reset: bool = False  # "forgot password" by emailed code (true whenever a code can be emailed)
 
 
 class RegisterRequest(Credentials):
@@ -103,11 +126,17 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     created_at: datetime
+    email_verified: bool = False
+    has_password: bool = False  # false for accounts created with Google or an emailed code and never given a password
+    google_linked: bool = False
+    last_login_at: Optional[datetime] = None
 
     @classmethod
     def of(cls, user: UserModel) -> "UserResponse":
         return cls(id=user.id, email=user.email, name=user.name, tenant_id=user.tenant_id,
-                   role=user.role, is_active=user.is_active, created_at=user.created_at)
+                   role=user.role, is_active=user.is_active, created_at=user.created_at,
+                   email_verified=user.email_verified, has_password=bool(user.password_hash),
+                   google_linked=bool(user.google_id), last_login_at=user.last_login_at)
 
 
 class TokenResponse(BaseModel):
@@ -182,9 +211,17 @@ async def _new_user(email: str, password: str, name: Optional[str], tenant_id: s
 
 
 def _token_response(user: UserModel) -> TokenResponse:
-    token = create_access_token(user.id, user.tenant_id, user.role)
+    token = create_access_token(user.id, user.tenant_id, user.role, session_version=user.session_version)
     return TokenResponse(access_token=token, expires_in=settings.access_token_ttl_minutes * 60,
                          user=UserResponse.of(user))
+
+
+def _deliver_reset_code(email: str, code: str) -> None:
+    if smtp_configured():
+        subject, text, html = password_reset_email(code, settings.otp_ttl_minutes)
+        send_email(email, subject, text, html)
+    else:  # development only: _otp_available() refuses this branch in production
+        logger.warning(f"[development] password reset code for {email}: {code} (SMTP is not configured, so nothing was emailed)")
 
 
 def _otp_available() -> bool:
@@ -299,7 +336,7 @@ async def auth_options() -> AuthOptions:
     """Public: which sign-in methods this server offers, so the page shows only the working ones."""
     return AuthOptions(google_client_id=settings.google_client_id or None, email_otp=_otp_available(),
                        registration=settings.allow_registration,
-                       registration_needs_code=settings.allow_registration and _otp_available())
+                       registration_needs_code=settings.allow_registration and _otp_available(), password_reset=_otp_available())
 
 
 @router.post("/otp/request", status_code=status.HTTP_202_ACCEPTED)
@@ -323,12 +360,12 @@ async def otp_request(body: EmailRequest, background: BackgroundTasks) -> dict:
     return {"detail": "If this address can sign in, a code is on its way.", "resend_after_seconds": settings.otp_resend_seconds}
 
 
-async def _consume_code(email: str, code: str, method: str) -> None:
+async def _consume_code(email: str, code: str, method: str, purpose: str = "signin") -> None:
     """Check a submitted code against the stored challenge and spend it. Raises 401 with one message for every failure."""
     repo = OtpRepository()
     rejected = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="That code is not valid or has expired.")
     challenge = await repo.get(email)
-    if challenge is None:
+    if challenge is None or challenge.get("purpose", "signin") != purpose:  # a sign-in code cannot reset a password, nor the reverse
         raise rejected
     if _as_utc(challenge["expires_at"]) <= datetime.now(timezone.utc) or int(challenge.get("attempts", 0)) >= settings.otp_max_attempts:
         await repo.delete(email)
@@ -336,7 +373,7 @@ async def _consume_code(email: str, code: str, method: str) -> None:
     if not code_matches(email, code, challenge["code_hash"]):
         if await repo.record_failure(email) >= settings.otp_max_attempts:
             await repo.delete(email)  # too many wrong guesses: the code is gone, ask for a new one
-        await audit.record("auth.login" if method == "otp" else "auth.register", tenant_id="_unscoped", outcome="denied",
+        await audit.record({"otp": "auth.login", "register": "auth.register"}.get(method, "auth.password_reset"), tenant_id="_unscoped", outcome="denied",
                            actor_id="unknown", actor_email=email, details={"method": method, "reason": "bad_code"})
         raise rejected
     await repo.delete(email)  # a code works once
@@ -361,6 +398,98 @@ async def google_login(body: GoogleLoginRequest) -> TokenResponse:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     user = await _sign_in_verified_email(str(claims["email"]).strip().lower(), claims.get("name"), "google", google_id=str(claims["sub"]))
     return _token_response(user)
+
+
+async def _check_send_limits(key: str) -> None:
+    _otp_gap.window = float(settings.otp_resend_seconds)
+    for limiter, limit in ((_otp_gap, 1), (_otp_hourly, settings.otp_max_per_hour)):
+        allowed, _, retry = limiter.check(key, limit)
+        if not allowed:
+            seconds = max(1, int(retry) + 1)
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=f"A code was sent recently. Try again in {seconds}s.",
+                                headers={"Retry-After": str(seconds)})
+
+
+@router.post("/password/reset/request", status_code=status.HTTP_202_ACCEPTED)
+async def password_reset_request(body: EmailRequest, background: BackgroundTasks) -> dict:
+    """Emails a reset code. The answer is the same whether or not the address has an account."""
+    if not _otp_available():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Password reset by email is not available on this server.")
+    await _check_send_limits("reset:" + body.email)  # its own allowance, separate from sign-in codes
+    user = await UserRepository().get_user_by_email(body.email)
+    if user and user.is_active:
+        code = new_code()
+        expires = datetime.now(timezone.utc) + timedelta(minutes=settings.otp_ttl_minutes)
+        await OtpRepository().save(body.email, hash_code(body.email, code), expires, purpose="reset")
+        background.add_task(_deliver_reset_code, body.email, code)
+        await audit.record("auth.password_reset_requested", tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
+                           resource_type="user", resource_id=user.id)
+    return {"detail": "If this address has an account, a reset code is on its way.", "resend_after_seconds": settings.otp_resend_seconds}
+
+
+@router.post("/password/reset/confirm")
+async def password_reset_confirm(body: PasswordResetConfirm) -> dict:
+    """Sets a new password for the address the code was sent to. Every older session is ended."""
+    _check_password_strength(body.new_password)  # before the code is spent
+    await _consume_code(body.email, body.code.strip(), "reset", purpose="reset")
+    repo = UserRepository()
+    user = await repo.get_user_by_email(body.email)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="That code is not valid or has expired.")
+    password_hash = await run_in_threadpool(hash_password, body.new_password)
+    await repo.update_user(user.id, {"password_hash": password_hash, "email_verified": True,
+                                     "session_version": user.session_version + 1})
+    await audit.record("auth.password_reset", tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
+                       actor_role=user.role, resource_type="user", resource_id=user.id)
+    return {"detail": "Password updated. Sign in with the new password."}
+
+
+async def _signed_in_user(principal: Principal) -> UserModel:
+    """The account behind a browser session. API keys and the auth-off anonymous caller cannot manage an account."""
+    if principal.auth_method != "jwt":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sign in with your account to manage it.")
+    user = await UserRepository().get_user_by_id(principal.user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    return user
+
+
+@router.post("/password/change", response_model=TokenResponse)
+async def change_password(body: ChangePasswordRequest, principal: Principal = Depends(get_principal)) -> TokenResponse:
+    """Changes the password of the signed-in account. Other sessions end; the caller gets a fresh token."""
+    user = await _signed_in_user(principal)
+    if not user.password_hash:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="This account has no password yet. Use 'Set a password' to create one.")
+    if not await run_in_threadpool(verify_password, body.current_password, user.password_hash):
+        await audit.record("auth.password_change", tenant_id=user.tenant_id, outcome="denied", actor_id=user.id,
+                           actor_email=user.email, details={"reason": "bad_current_password"})
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect.")
+    _check_password_strength(body.new_password)
+    password_hash = await run_in_threadpool(hash_password, body.new_password)
+    await UserRepository().update_user(user.id, {"password_hash": password_hash, "session_version": user.session_version + 1})
+    await audit.record("auth.password_change", tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
+                       actor_role=user.role, resource_type="user", resource_id=user.id)
+    return _token_response(await UserRepository().get_user_by_id(user.id))
+
+
+@router.post("/sessions/revoke", response_model=TokenResponse)
+async def revoke_other_sessions(principal: Principal = Depends(get_principal)) -> TokenResponse:
+    """Signs the account out everywhere else (every token issued so far stops working); the caller gets a fresh token."""
+    user = await _signed_in_user(principal)
+    await UserRepository().update_user(user.id, {"session_version": user.session_version + 1})
+    await audit.record("auth.sessions_revoked", tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
+                       actor_role=user.role, resource_type="user", resource_id=user.id)
+    return _token_response(await UserRepository().get_user_by_id(user.id))
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_profile(body: UpdateProfileRequest, principal: Principal = Depends(get_principal)) -> UserResponse:
+    user = await _signed_in_user(principal)
+    await UserRepository().update_user(user.id, {"name": body.name})
+    await audit.record("auth.profile_update", tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
+                       actor_role=user.role, resource_type="user", resource_id=user.id)
+    return UserResponse.of(await UserRepository().get_user_by_id(user.id))
 
 
 @router.get("/me", response_model=UserResponse)

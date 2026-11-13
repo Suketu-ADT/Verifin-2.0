@@ -19,11 +19,11 @@ class OtpRepository:
             raise ConnectionError("MongoDB is currently unavailable.")
         return database.otp_challenges
 
-    async def save(self, email: str, code_hash: str, expires_at: datetime) -> None:
-        """Replace any pending code for the address; the guess counter starts again."""
+    async def save(self, email: str, code_hash: str, expires_at: datetime, purpose: str = "signin") -> None:
+        """Replace any pending code for the address (sign-in and password reset share the slot); the guess counter starts again."""
         await self.collection.replace_one(
             {"email": email},
-            {"email": email, "code_hash": code_hash, "expires_at": expires_at, "attempts": 0,
+            {"email": email, "code_hash": code_hash, "expires_at": expires_at, "attempts": 0, "purpose": purpose,
              "created_at": datetime.now(timezone.utc)},
             upsert=True,
         )

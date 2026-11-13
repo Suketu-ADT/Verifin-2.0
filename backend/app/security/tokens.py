@@ -11,12 +11,13 @@ import jwt
 from app.config import settings
 
 
-def create_access_token(user_id: str, tenant_id: str, role: str, ttl_minutes: Optional[int] = None) -> str:
+def create_access_token(user_id: str, tenant_id: str, role: str, ttl_minutes: Optional[int] = None, session_version: int = 0) -> str:
     now = datetime.now(timezone.utc)
     payload: Dict[str, Any] = {
         "sub": user_id,
         "tid": tenant_id,
         "role": role,
+        "sv": session_version,
         "iss": settings.jwt_issuer,
         "iat": now,
         "exp": now + timedelta(minutes=ttl_minutes or settings.access_token_ttl_minutes),

@@ -155,6 +155,9 @@ The backend implements the exact contract required by `frontend/src/lib/api.ts`:
 - **`users`**:
   - `email` (unique, sparse)
   - `google_id` (sparse)
+- **`otp_challenges`** (emailed codes for sign-in, sign-up and password reset):
+  - `email` (unique)
+  - `expires_at` (TTL, removed when due)
 - **`documents`**:
   - `user_id` (ascending)
   - `created_at` (descending)

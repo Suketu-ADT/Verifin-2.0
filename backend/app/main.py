@@ -79,12 +79,15 @@ def create_app() -> FastAPI:
     # ── Exception Handlers ───────────────────────────────────────────────────
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        logger.warning(f"Validation error on {request.method} {request.url.path}: {exc.errors()}")
+        # only where and why: the raw error also carries the submitted input (a password, say) and exception objects
+        # raised by custom validators, which cannot be serialised
+        problems = [{"type": e.get("type"), "loc": list(e.get("loc", ())), "msg": e.get("msg")} for e in exc.errors()]
+        logger.warning(f"Validation error on {request.method} {request.url.path}: {problems}")
         return JSONResponse(
             status_code=422,
             content={
                 "error": "Validation Error",
-                "detail": exc.errors(),
+                "detail": problems,
                 "request_id": request_id_var.get(),
             },
         )

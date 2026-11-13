@@ -8,6 +8,7 @@ import { useAuth } from "../lib/AuthContext"
 import { errorMessage, fetchAuthOptions, requestOtp, type AuthOptions } from "../lib/api"
 import { EmailCodeForm } from "../components/EmailCodeForm"
 import { GoogleSignInButton } from "../components/GoogleSignInButton"
+import { PasswordResetForm } from "../components/PasswordResetForm"
 
 export default function Auth() {
   const navigate = useNavigate()
@@ -43,6 +44,7 @@ export default function Auth() {
   // which sign-in methods the server offers; until it answers, only the password form shows
   const [options, setOptions] = useState<AuthOptions | null>(null)
   const [loginMethod, setLoginMethod] = useState<"password" | "code">("password")
+  const [resetMode, setResetMode] = useState(false)
   useEffect(() => {
     fetchAuthOptions().then(setOptions).catch(() => setOptions(null))
   }, [])
@@ -222,6 +224,20 @@ export default function Auth() {
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ duration: 0.2 }}
                 >
+                  {resetMode ? (
+                    <>
+                      <h1 className="text-2xl font-bold tracking-tight mb-2">Reset your password</h1>
+                      <p className="text-xs text-slate-400 mb-6 leading-relaxed">
+                        We will email you a code, then you choose a new password.
+                      </p>
+                      <PasswordResetForm
+                        initialEmail={loginEmail}
+                        onCancel={() => setResetMode(false)}
+                        onDone={() => { setResetMode(false); setLoginMethod("password"); setLoginPassword(""); setError(null) }}
+                      />
+                    </>
+                  ) : (
+                  <>
                   <h1 className="text-2xl font-bold tracking-tight mb-2">Welcome Back</h1>
                   <p className="text-xs text-slate-400 mb-6 leading-relaxed">
                     Sign in to your organisation's workspace.
@@ -260,7 +276,14 @@ export default function Auth() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Password</label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-slate-300">Password</label>
+                        {options?.password_reset && (
+                          <button type="button" onClick={() => { setResetMode(true); setError(null) }} className="text-[11px] font-medium text-amber-400 hover:text-amber-300">
+                            Forgot password?
+                          </button>
+                        )}
+                      </div>
                       <Input 
                         type="password" 
                         value={loginPassword}
@@ -279,6 +302,8 @@ export default function Auth() {
                   </form>
                   )}
                   {googleBlock}
+                  </>
+                  )}
                 </motion.div>
               ) : (
                 <motion.div

@@ -13,6 +13,7 @@ import SystemStatus from "./pages/SystemStatus"
 import ReviewQueue from "./pages/ReviewQueue"
 import Auth from "./pages/Auth"
 import Admin from "./pages/Admin"
+import Account from "./pages/Account"
 import { AuthProvider, RequireAuth, RequireRole } from "./lib/AuthContext"
 
 function App() {
@@ -35,6 +36,7 @@ function App() {
           <Route path="/history" element={<History />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/account" element={<Account />} />
           <Route path="/system" element={<SystemStatus />} />
           <Route path="/admin" element={<RequireRole minimum="admin"><Admin /></RequireRole>} />
         </Route>

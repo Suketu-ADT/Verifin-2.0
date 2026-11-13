@@ -75,7 +75,7 @@ def google_token(**overrides):
 async def test_options_report_what_is_available(client, monkeypatch):
     body = (await client.get(f"{V1}/auth/options")).json()
     assert body == {"password": True, "google_client_id": CLIENT_ID, "email_otp": True, "registration": True,
-                    "registration_needs_code": True}
+                    "registration_needs_code": True, "password_reset": True}
 
     monkeypatch.setattr(settings, "google_client_id", None)
     monkeypatch.setattr(settings, "environment", "production")  # production without SMTP: codes must not be offered

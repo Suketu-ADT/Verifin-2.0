@@ -516,6 +516,8 @@ export interface AuthOptions {
   registration: boolean;
   /** Sign-up must prove the address with an emailed code first. */
   registration_needs_code: boolean;
+  /** "Forgot password" by emailed code is available. */
+  password_reset: boolean;
 }
 
 export async function fetchAuthOptions(): Promise<AuthOptions> {
@@ -686,4 +688,29 @@ export interface VerificationSummary {
 
 export async function listVerifications(limit = 100): Promise<VerificationSummary[]> {
   return (await api.get<VerificationSummary[]>('/api/v1/verification', { params: { limit } })).data;
+}
+
+// ---------------------------------------------------------------------------
+// Password reset and the signed-in account
+// ---------------------------------------------------------------------------
+
+export async function requestPasswordReset(email: string): Promise<{ detail: string; resend_after_seconds: number }> {
+  return (await api.post('/api/v1/auth/password/reset/request', { email })).data;
+}
+
+export async function confirmPasswordReset(email: string, code: string, newPassword: string): Promise<{ detail: string }> {
+  return (await api.post('/api/v1/auth/password/reset/confirm', { email, code, new_password: newPassword })).data;
+}
+
+/** Other sessions end; the response carries a fresh token for this one. */
+export async function changePasswordRequest(currentPassword: string, newPassword: string): Promise<TokenResponse> {
+  return (await api.post<TokenResponse>('/api/v1/auth/password/change', { current_password: currentPassword, new_password: newPassword })).data;
+}
+
+export async function revokeOtherSessions(): Promise<TokenResponse> {
+  return (await api.post<TokenResponse>('/api/v1/auth/sessions/revoke')).data;
+}
+
+export async function updateProfile(name: string): Promise<AuthUser> {
+  return (await api.patch<AuthUser>('/api/v1/auth/me', { name })).data;
 }

@@ -27,7 +27,8 @@ from app.security.principal import Principal, get_principal
 WINDOW_SECONDS = 60.0
 MAX_TRACKED_KEYS = 50_000
 # every way of proving who you are: these get the stricter per-address limit
-AUTH_PATHS = ("/auth/login", "/auth/register", "/auth/google", "/auth/otp/request", "/auth/otp/verify")
+AUTH_PATHS = ("/auth/login", "/auth/register", "/auth/google", "/auth/otp/request", "/auth/otp/verify",
+              "/auth/password/reset/request", "/auth/password/reset/confirm", "/auth/password/change")
 
 
 class SlidingWindowLimiter:

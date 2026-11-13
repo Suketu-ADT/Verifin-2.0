@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 import { Navigate, Outlet, useLocation } from "react-router-dom"
-import { fetchCurrentUser, googleLoginRequest, loginRequest, registerRequest, verifyOtp } from "./api"
+import { fetchCurrentUser, googleLoginRequest, loginRequest, registerRequest, verifyOtp, type TokenResponse } from "./api"
 import { ANONYMOUS_ID, clearToken, setToken, type AuthUser } from "./auth"
 
 interface AuthState {
@@ -14,6 +14,10 @@ interface AuthState {
   loginWithCode: (email: string, code: string, name?: string) => Promise<void>
   /** Sign in with the ID token Google Identity Services returned. */
   loginWithGoogle: (credential: string) => Promise<void>
+  /** Adopt the fresh token and user an account action returned (the old token stopped working). */
+  applySession: (result: TokenResponse) => void
+  /** Replace the signed-in user's details after an edit. */
+  updateUser: (user: AuthUser) => void
   logout: () => void
 }
 
@@ -58,14 +62,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(result.user)
   }, [])
 
+  const applySession = useCallback((result: TokenResponse) => {
+    setToken(result.access_token)
+    setUser(result.user)
+  }, [])
+
   const logout = useCallback(() => {
     clearToken()
     setUser(null)
   }, [])
 
   const value = useMemo<AuthState>(
-    () => ({ user, loading, authDisabled: user?.id === ANONYMOUS_ID, login, register, loginWithCode, loginWithGoogle, logout }),
-    [user, loading, login, register, loginWithCode, loginWithGoogle, logout],
+    () => ({ user, loading, authDisabled: user?.id === ANONYMOUS_ID, login, register, loginWithCode, loginWithGoogle, applySession, updateUser: setUser, logout }),
+    [user, loading, login, register, loginWithCode, loginWithGoogle, applySession, logout],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

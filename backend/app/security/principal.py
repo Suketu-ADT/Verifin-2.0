@@ -85,6 +85,9 @@ async def _principal_from_token(token: str) -> Principal:
     user = await UserRepository().get_user_by_id(claims["sub"])
     if user is None or not user.is_active:
         raise _unauthorized("Account is disabled or no longer exists.")
+    # a password change or "sign out everywhere" raises the account's session version, which ends every older token
+    if int(claims.get("sv", 0)) != user.session_version:
+        raise _unauthorized("Session ended. Sign in again.")
     # role and tenant come from the database, so a role change or deactivation applies immediately
     return Principal(user_id=user.id, tenant_id=user.tenant_id, role=user.role, auth_method="jwt", email=user.email)
 

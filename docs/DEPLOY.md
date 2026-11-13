@@ -125,10 +125,11 @@ uptime guarantee; they are for demos. GitHub Pages is not used on this route.
 
 It needs `cloudflared` on PATH or at `tools\cloudflared.exe` (the `tools` folder is git-ignored). Close other programs using port 8000 first.
 
-## 2e. Sign in with Google and with an emailed code
+## 2e. Sign in with Google and with an emailed code (also password reset)
 
 The sign-in page offers a password, an emailed 6-digit code (passwordless; a new address creates an account while sign-up is open) and
-Google. Each appears only when the server is set up for it (`GET /api/v1/auth/options`). Set these in `backend\.env`:
+Google. Each appears only when the server is set up for it (`GET /api/v1/auth/options`, whose `email_otp`, `registration_needs_code`,
+`password_reset` and `google_client_id` fields say what is on). Set these in `backend\.env`:
 
 ```
 # Email codes: Gmail example. Create an app password at myaccount.google.com/apppasswords (needs 2-step verification).
@@ -145,6 +146,19 @@ GOOGLE_CLIENT_ID=1234567890-abcdef.apps.googleusercontent.com
 Without SMTP, codes are only written to the API log and only outside production; with `ENVIRONMENT=production` and no SMTP the code
 option is hidden. Whenever a code can be sent, creating an account with a password also needs one (the Sign Up form asks for it
 after the details), which proves the address belongs to the person; without SMTP in production sign-up skips that step.
+
+**Forgotten passwords.** Under the password box the sign-in page has *Forgot password?*. It emails a code to the address, then asks for the
+code and a new password (10+ characters, a number, upper and lower case). The same code mail template and limits apply (one request per
+45 seconds, six an hour, five wrong guesses cancel the code), a reset code works only for resetting and a sign-in code only for signing
+in, and the answer is the same whether or not the address has an account. Resetting a password ends every session that was open. It
+needs working SMTP (or a non-production server, where the code is written to the API log); with `ENVIRONMENT=production` and no SMTP
+the link is hidden and a forgotten password needs an administrator.
+
+**My Account** (sidebar, or the name at the top right) lets a signed-in user edit their name, see how they sign in (password set, Google
+linked, emailed code available) and when they last did, change the password (the current one is required), add a password to an account
+created with Google or a code (a code is emailed to confirm), and *Sign out of other devices*. Changing a password, resetting it and
+signing out of other devices all raise the account's session version, which makes every older token stop working at once; the browser
+that did it receives a new token and stays signed in. API keys cannot use these endpoints. There is no "delete my account" button.
 
 Google console (free): console.cloud.google.com, APIs & Services, OAuth consent screen (External, add yourself as a test user),
 then Credentials, Create credentials, OAuth client ID, Web application. Under **Authorized JavaScript origins** add the exact

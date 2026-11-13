@@ -18,5 +18,6 @@ class UserModel(BaseModel):
     password_hash: Optional[str] = None
     is_active: bool = True
     last_login_at: Optional[datetime] = None
+    session_version: int = Field(default=0, description="Raised to end every sign-in token issued so far (password change, sign out everywhere)")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
