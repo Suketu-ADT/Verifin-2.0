@@ -57,6 +57,40 @@ class OpenAIProvider(LLMProvider):
     def is_configured(self) -> bool:
         return bool(self._client is not None and self._api_key)
 
+    @staticmethod
+    def _ollama_native_base() -> Optional[str]:
+        """Ollama's own API address when num_ctx or keep_alive is configured, else None (use the OpenAI-compatible endpoint)."""
+        base = (settings.openai_base_url or "").rstrip("/")
+        if not base or not (settings.ollama_num_ctx or settings.ollama_keep_alive):
+            return None
+        return base[: -len("/v1")] if base.endswith("/v1") else base
+
+    async def _complete_json(self, messages: list) -> str:
+        """One JSON-mode completion for a custom (non-OpenAI) endpoint; returns the raw text."""
+        native = self._ollama_native_base()
+        if native is None:
+            comp = await self._client.chat.completions.create(
+                model=self._model_name,
+                messages=messages,
+                response_format={"type": "json_object"},
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_output_tokens,
+            )
+            return comp.choices[0].message.content or ""
+
+        import httpx
+
+        options: Dict[str, Any] = {"temperature": settings.llm_temperature, "num_predict": settings.llm_max_output_tokens}
+        if settings.ollama_num_ctx:
+            options["num_ctx"] = settings.ollama_num_ctx
+        payload: Dict[str, Any] = {"model": self._model_name, "messages": messages, "stream": False, "format": "json", "options": options}
+        if settings.ollama_keep_alive:
+            payload["keep_alive"] = settings.ollama_keep_alive
+        async with httpx.AsyncClient(timeout=settings.llm_timeout_seconds) as client:
+            response = await client.post(f"{native}/api/chat", json=payload)
+            response.raise_for_status()
+            return (response.json().get("message") or {}).get("content") or ""
+
     async def generate_structured(
         self,
         prompt: str,
@@ -129,15 +163,7 @@ class OpenAIProvider(LLMProvider):
                 {"role": "user", "content": prompt},
             ]
 
-            raw_comp = await self._client.chat.completions.create(
-                model=self._model_name,
-                messages=standard_messages,
-                response_format={"type": "json_object"},
-                temperature=settings.llm_temperature,
-                max_tokens=min(settings.llm_max_output_tokens, 1500),
-            )
-
-            raw_text = raw_comp.choices[0].message.content or ""
+            raw_text = await self._complete_json(standard_messages)
             if "```" in raw_text:
                 m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw_text)
                 if m:

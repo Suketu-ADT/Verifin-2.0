@@ -6,6 +6,7 @@ Loads environment variables via pydantic-settings.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -155,6 +156,17 @@ class Settings(BaseSettings):
     llm_cache_max_entries: int = 256
     # Whole-call budget for document fact extraction; past it the deterministic extractor answers instead.
     llm_extraction_budget_seconds: int = 45
+    # How much of a document "Draft from document" reads and how many claims it returns. More chunks or claims means a longer prompt
+    # and answer, so raise llm_extraction_budget_seconds and llm_timeout_seconds with them (a local CPU model needs minutes).
+    fact_sample_max_chunks: int = 12  # the most figure-dense chunks sent to the language model
+    fact_sample_max_pages: int = 8  # pages read when a document has no stored chunks
+    fact_max_claims: int = 10  # claims returned to the interface
+    fact_fallback_max_claims: int = 8  # claims the deterministic extractor returns when the language model is unavailable
+
+    # Ollama only (LLM_PROVIDER=openai with OPENAI_BASE_URL pointing at Ollama). Ollama's OpenAI-compatible /v1 endpoint ignores both
+    # values, so when either is set the provider talks to Ollama's native /api/chat instead.
+    ollama_num_ctx: Optional[int] = None  # context window in tokens; Ollama's own default of 4096 silently cuts longer prompts
+    ollama_keep_alive: Optional[str] = None  # how long the model stays loaded after a call, e.g. "30m"; avoids a reload per request
 
     # Alternative/future provider keys
     llm_model: Optional[str] = None
@@ -179,6 +191,28 @@ class Settings(BaseSettings):
     def validate_temperature(cls, v: float) -> float:
         if not (0.0 <= v <= 2.0):
             raise ValueError("llm_temperature must be between 0.0 and 2.0")
+        return v
+
+    @field_validator("fact_sample_max_chunks", "fact_sample_max_pages", "fact_max_claims", "fact_fallback_max_claims")
+    @classmethod
+    def validate_fact_limits(cls, v: int) -> int:
+        if not (1 <= v <= 200):
+            raise ValueError("fact extraction limits must be between 1 and 200")
+        return v
+
+    @field_validator("ollama_num_ctx")
+    @classmethod
+    def validate_ollama_num_ctx(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (512 <= v <= 131072):
+            raise ValueError("ollama_num_ctx must be between 512 and 131072")
+        return v
+
+    @field_validator("ollama_keep_alive")
+    @classmethod
+    def validate_ollama_keep_alive(cls, v: Optional[str]) -> Optional[str]:
+        v = (v or "").strip() or None
+        if v is not None and not re.fullmatch(r"-?\d+(ms|s|m|h)?", v):
+            raise ValueError('ollama_keep_alive must look like "30m", "1h", "300" (seconds) or "-1"')
         return v
 
     @field_validator("llm_timeout_seconds")

@@ -72,8 +72,9 @@ class FinancialExtractorService:
 
 
     @staticmethod
-    def figure_sentences(text: str, limit: int = 8) -> list:
+    def figure_sentences(text: str, limit: Optional[int] = None) -> list:
         """Whole sentences of the document that state a figure, without the decomposition that splits mid-sentence on PDF text."""
+        limit = limit or settings.fact_fallback_max_claims
         seen, out = set(), []
         for sentence in split_sentences(text):
             sentence = FinancialExtractorService._strip_page_furniture(sentence)

@@ -68,8 +68,8 @@ class DocumentService:
         self.table_extractor = table_extractor or TableExtractionService()
 
 
-    FACT_SAMPLE_MAX_CHUNKS = 12
-    FACT_SAMPLE_MAX_PAGES = 8
+    FACT_SAMPLE_MAX_CHUNKS = settings.fact_sample_max_chunks
+    FACT_SAMPLE_MAX_PAGES = settings.fact_sample_max_pages
     _FACT_SIGNAL = re.compile(
         r"(\$\s?\d|\d\s?%|\b\d[\d,]*\.?\d*\s*(?:billion|million|thousand)\b"
         r"|\b(?:revenue|net income|operating income|earnings|margin|cash flow|debt|eps)\b)",
@@ -367,7 +367,7 @@ class DocumentService:
             fallback = ClaimExtractor()
             raw_claims = extractor.figure_sentences(doc_text) or extractor.prefer_figure_claims(fallback.extract_claims(doc_text))
             from app.schemas.llm import LLMExtractedClaim
-            for rc in raw_claims[:8]:
+            for rc in raw_claims[: settings.fact_fallback_max_claims]:
                 llm_claims.append(
                     LLMExtractedClaim(
                         claim_text=rc["claim_text"],
@@ -379,7 +379,7 @@ class DocumentService:
         fact_items: list[ExtractedFactItem] = []
         summary_lines: list[str] = []
 
-        for idx, c in enumerate(llm_claims[:10], start=1):
+        for idx, c in enumerate(llm_claims[: settings.fact_max_claims], start=1):
             fact_items.append(
                 ExtractedFactItem(
                     claim_text=c.claim_text,

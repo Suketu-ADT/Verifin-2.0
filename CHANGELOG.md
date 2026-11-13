@@ -4,6 +4,12 @@ Newest first. Only user-visible changes and changes to how the project is built 
 
 ## Unreleased: interface redesign and motion polish (2026-11-13)
 
+### Backend: draft-from-document limits are settings
+
+- `OLLAMA_NUM_CTX` and `OLLAMA_KEEP_ALIVE` (both optional) set the context window and how long the model stays loaded. Ollama's OpenAI-compatible `/v1` endpoint ignores them, so when either is set the provider calls Ollama's native `/api/chat`. Checked against Ollama 0.32.9: the context went from 4096 to 8192 and the model stayed loaded for the requested time.
+- The JSON-mode call to a custom endpoint (Ollama, Groq) now honours `LLM_MAX_OUTPUT_TOKENS`; it was silently capped at 1500 tokens.
+- `FACT_SAMPLE_MAX_CHUNKS`, `FACT_SAMPLE_MAX_PAGES`, `FACT_MAX_CLAIMS` and `FACT_FALLBACK_MAX_CLAIMS` replace hard-coded caps (12 chunks, 8 pages, 10 claims returned, 8 claims from the plain extractor). Defaults are unchanged; each is bounded to 1 to 200. `.env.example` documents them with measured timings for a local CPU model.
+
 Frontend and documentation only. No backend, API contract, authentication or verification logic changed, and no metric on screen is invented.
 
 ### Motion polish
