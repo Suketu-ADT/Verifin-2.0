@@ -107,3 +107,26 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
+      # TEMPORARY diagnostic: list the findings as one public annotation (remove once the scan is fixed)
+      - name: Trivy findings (diagnostic)
+        if: failure()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: verifin-api:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: json
+          output: trivy.json
+          exit-code: "0"
+      - name: Print findings (diagnostic)
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import json
+          data = json.load(open("trivy.json"))
+          lines = []
+          for result in data.get("Results", []):
+              for v in result.get("Vulnerabilities") or []:
+                  lines.append(f'{v["Severity"]} {v["VulnerabilityID"]} {v["PkgName"]} {v["InstalledVersion"]} -> {v.get("FixedVersion","?")} [{result.get("Target","")}]')
+          print("::error title=Trivy findings::" + "%0A".join(lines) if lines else "::notice::no findings")
+          EOF
