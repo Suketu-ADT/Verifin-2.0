@@ -27,6 +27,7 @@ Frontend and documentation only. No backend, API contract, authentication or ver
 - Honest data: removed the non-functional header search and bell, the static "LIVE" pill and other hard-coded figures; the landing page's example scores are labelled "Illustration only"; the OCR floor and engine settings are read from the engine configuration.
 - "Unverifiable" is shown wherever the backend key is `UNVERIFIED`. A claim whose language-model reading disagrees with the final verdict now says "Language model alone: ... overruled by <rule>" instead of showing "entails" beside a Contradicted badge.
 - Responsive from 375 px (no horizontal scroll on any route) and keyboard accessible (skip link, visible focus, labelled controls, focus trap in dialogs and the drawer, arrow-key navigation in tabs).
+- `scroll-padding-top` on `html`: focused or scrolled-to elements no longer end up hidden under the sticky header (this also removed a ~1 s retry delay when the demo recorder clicked claim rows).
 - Forced-colours (Windows high contrast) rules so the current page, pressed filters, selected tabs and sidebar icons stay visible.
 
 ### Documentation

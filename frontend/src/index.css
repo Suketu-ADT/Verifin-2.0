@@ -100,6 +100,8 @@
     color-scheme: light;
     /* the page never jumps sideways when a route has no scrollbar */
     scrollbar-gutter: stable;
+    /* the sticky header is 4rem tall: anything scrolled into view (focus, anchors, scripted clicks) stops below it, not under it */
+    scroll-padding-top: 5rem;
     background: var(--color-canvas);
     -webkit-text-size-adjust: 100%;
   }

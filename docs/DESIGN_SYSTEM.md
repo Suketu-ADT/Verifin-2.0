@@ -231,7 +231,7 @@ Mobile-first, Tailwind breakpoints (`sm` 640, `md` 768, `lg` 1024, `xl` 1280).
 - Grids start at one column and add columns at `sm`/`lg`/`xl` (KPI cards 1 → 2 → 4); two-chart rows stack until `xl`.
 - Tables: use `hideBelow` to drop secondary columns; the table scrolls inside its own container, never the page.
 - Every flex or grid child that holds text needs `min-w-0` so long names truncate or wrap instead of widening the page (`Card` already has it).
-- The scroll container is the window (`window.scrollTo`), not an inner element.
+- The scroll container is the window (`window.scrollTo`), not an inner element. `html` has `scroll-padding-top: 5rem`, so anything scrolled into view (keyboard focus, anchors, scripted clicks) stops below the 4rem sticky header instead of under it.
 - Rule of thumb: no page may scroll sideways at 375px wide.
 
 ## Adding a page or component
