@@ -1,511 +1,207 @@
-import { motion, AnimatePresence } from "framer-motion"
-import { useState, useEffect, useMemo } from "react"
-import { useSearchParams, Link } from "react-router-dom"
-import { Badge } from "../components/ui/badge"
-import { Button } from "../components/ui/button"
-import {
-  CheckCircle2,
-  AlertTriangle,
-  HelpCircle,
-  FileText,
-  Search,
-  Calculator,
-  Calendar,
-  Loader2,
-  ArrowRight,
-  Filter,
-  Sparkles,
-  Layers,
-  Hash,
-  Database,
-  ExternalLink,
-  ChevronRight,
-  ShieldCheck,
-  ShieldAlert
-} from "lucide-react"
-import { getVerificationResults, type ClaimResponse, type VerificationResultResponse } from "../lib/api"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Link, useSearchParams } from "react-router-dom"
+import { ArrowRight, Lightbulb, Scale, Search } from "lucide-react"
+import { Card } from "@/components/ui/card"
+import { Input, Select } from "@/components/ui/input"
+import { Segmented } from "@/components/ui/tabs"
+import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeading } from "@/components/shared/PageHeading"
+import { EmptyState, ErrorState } from "@/components/shared/states"
+import { ConfidenceIndicator, NliBar, StatusBadge } from "@/components/verification/indicators"
+import { EvidencePanel, hasEvidence } from "@/components/verification/EvidencePanel"
+import { TechnicalDetails } from "@/components/verification/TechnicalDetails"
+import { cn } from "@/lib/utils"
+import { formatDateTime, humanize } from "@/lib/format"
+import { ruleInfo } from "@/lib/rules"
+import { normalizeVerdict, VERDICT_ORDER, VERDICTS, type Verdict } from "@/lib/verdict"
+import { getVerificationResults, type ClaimResponse } from "../lib/api"
 import { useHistory } from "../lib/useHistory"
 
-const verdictMeta = (label: string | undefined) => {
-  const norm = (label || "").toUpperCase()
-  if (norm === "SUPPORTED" || norm === "ENTAILMENT") {
-    return { 
-      icon: CheckCircle2, 
-      color: "text-emerald-300", 
-      dot: "bg-emerald-400", 
-      badge: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
-      label: "Supported" 
-    }
-  }
-  if (norm === "CONTRADICTED" || norm === "CONTRADICTION") {
-    return { 
-      icon: AlertTriangle, 
-      color: "text-rose-300", 
-      dot: "bg-rose-400", 
-      badge: "bg-rose-500/10 text-rose-300 border-rose-500/30",
-      label: "Contradicted" 
-    }
-  }
-  return { 
-    icon: HelpCircle, 
-    color: "text-amber-300", 
-    dot: "bg-amber-400", 
-    badge: "bg-amber-500/10 text-amber-300 border-amber-500/30",
-    label: "Unverifiable" 
-  }
-}
-
-type StatusFilter = "ALL" | "SUPPORTED" | "CONTRADICTED" | "UNVERIFIABLE"
+type StatusFilter = "ALL" | Verdict
 
 export default function EvidenceExplorer() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const { sessions, loading: loadingSessions, error: sessionsError } = useHistory()
+  const { sessions, loading: loadingSessions, error: sessionsError, reload } = useHistory()
 
-  const [liveClaims, setLiveClaims] = useState<ClaimResponse[]>([])
-  const [loadingLive, setLoadingLive] = useState(false)
+  const [claims, setClaims] = useState<ClaimResponse[]>([])
+  const [loadingClaims, setLoadingClaims] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
+  const [selectedId, setSelectedId] = useState("")
+  const detail = useRef<HTMLDivElement>(null)
 
   const finished = useMemo(() => sessions.filter((x) => x.status === "completed"), [sessions])
   const requested = searchParams.get("session")
-  // The session in the URL if it is one of ours, else the most recent finished run.
+  // the session in the URL if it is one of ours, else the most recent finished run
   const sessionId = (requested && finished.some((x) => x.id === requested) ? requested : finished[0]?.id) ?? null
   const session = finished.find((x) => x.id === sessionId) ?? null
 
   useEffect(() => {
     if (!sessionId) return
     let cancelled = false
-    setLoadingLive(true)
+    setLoadingClaims(true)
     setLoadError(null)
     getVerificationResults(sessionId)
-      .then((res: VerificationResultResponse) => {
-        if (!cancelled) setLiveClaims(res.claims || [])
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLiveClaims([])
-          setLoadError("Could not load this verification's claims.")
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingLive(false)
-      })
-    return () => {
-      cancelled = true
-    }
+      .then((res) => { if (!cancelled) setClaims(res.claims || []) })
+      .catch(() => { if (!cancelled) { setClaims([]); setLoadError("Could not load this verification's claims.") } })
+      .finally(() => { if (!cancelled) setLoadingClaims(false) })
+    return () => { cancelled = true }
   }, [sessionId])
 
-  const sessionTitle = session ? `${session.document_name ?? "Document"} · ${new Date(session.created_at).toLocaleString()}` : ""
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase()
+    return claims.filter((c) => (!q || c.claim_text.toLowerCase().includes(q) || (c.evidence?.text ?? "").toLowerCase().includes(q)) && (statusFilter === "ALL" || normalizeVerdict(c.status) === statusFilter))
+  }, [claims, query, statusFilter])
 
-  const rawPool = useMemo(
-    () =>
-      liveClaims.map((c) => ({
-        id: c.id,
-        sessionId: sessionId ?? "",
-        sessionTitle,
-        claim_text: c.claim_text,
-        status: c.status,
-        decided_by: c.decided_by,
-        nli: c.nli,
-        evidence: c.evidence,
-        numerical_finding: c.numerical_finding,
-        temporal_anchor: c.temporal_anchor,
-        multi_hop_finding: c.multi_hop_finding,
-        hallucination_type: c.hallucination_type,
-        reasoning_summary: c.reasoning_summary,
-      })),
-    [liveClaims, sessionId, sessionTitle],
-  )
-
-  // Filter by query and status
-  const filteredClaims = useMemo(() => {
-    return rawPool.filter((c) => {
-      const textMatch = 
-        c.claim_text.toLowerCase().includes(query.toLowerCase()) ||
-        (c.evidence?.text && c.evidence.text.toLowerCase().includes(query.toLowerCase()))
-
-      if (!textMatch) return false
-
-      if (statusFilter === "ALL") return true
-      const norm = (c.status || "").toUpperCase()
-      if (statusFilter === "SUPPORTED") return norm === "SUPPORTED" || norm === "ENTAILMENT"
-      if (statusFilter === "CONTRADICTED") return norm === "CONTRADICTED" || norm === "CONTRADICTION"
-      if (statusFilter === "UNVERIFIABLE") return norm === "UNVERIFIABLE" || norm === "UNVERIFIED" || norm === "NEUTRAL"
-      return true
-    })
-  }, [rawPool, query, statusFilter])
-
-  const [selectedId, setSelectedId] = useState<string>("")
+  const counts = useMemo(() => {
+    const c: Record<Verdict, number> = { SUPPORTED: 0, CONTRADICTED: 0, UNVERIFIABLE: 0 }
+    claims.forEach((x) => { c[normalizeVerdict(x.status)]++ })
+    return c
+  }, [claims])
 
   useEffect(() => {
-    if (filteredClaims.length > 0) {
-      if (!selectedId || !filteredClaims.some((c) => c.id === selectedId)) {
-        setSelectedId(filteredClaims[0].id)
-      }
-    }
-  }, [filteredClaims, selectedId])
+    if (filtered.length > 0 && (!selectedId || !filtered.some((c) => c.id === selectedId))) setSelectedId(filtered[0].id)
+  }, [filtered, selectedId])
 
-  const selected = filteredClaims.find((c) => c.id === selectedId) || filteredClaims[0]
-  const selectedMeta = verdictMeta(selected?.status)
+  const selected = filtered.find((c) => c.id === selectedId) ?? filtered[0]
+  const rule = selected ? ruleInfo(selected.decided_by) : null
+  const v = selected ? VERDICTS[normalizeVerdict(selected.status)] : null
+
+  const choose = (id: string) => {
+    setSelectedId(id)
+    // on narrow screens the detail sits below the list
+    if (window.matchMedia("(max-width: 1023px)").matches) window.setTimeout(() => detail.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50)
+  }
+
+  const heading = (
+    <PageHeading
+      title="Evidence explorer"
+      subtitle="Browse the passages found in the source document for each claim, with how they matched and why the claim got its verdict."
+      actions={finished.length > 0 && (
+        <div className="w-full min-w-64 sm:w-80">
+          <Select aria-label="Verification run" value={sessionId ?? ""} onChange={(e) => { setSearchParams({ session: e.target.value }); setSelectedId("") }}>
+            {finished.map((x) => <option key={x.id} value={x.id}>{(x.document_name ?? "Document") + " · " + formatDateTime(x.created_at)}</option>)}
+          </Select>
+        </div>
+      )}
+    />
+  )
+
+  if (sessionsError) return <div>{heading}<ErrorState title="Runs could not be loaded" message={sessionsError} onRetry={() => void reload()} /></div>
+  if (loadingSessions) return <div role="status" aria-label="Loading">{heading}<div className="grid gap-4 lg:grid-cols-5"><Skeleton className="h-96 lg:col-span-2" /><Skeleton className="h-96 lg:col-span-3" /></div></div>
+  if (!sessionId) {
+    return <div>{heading}<EmptyState title="No finished verifications yet" message="Run a verification and its retrieved evidence appears here, claim by claim." actionLabel="Start a verification" onAction={() => (window.location.href = `${(import.meta as any).env?.BASE_URL ?? "/"}verify`)} /></div>
+  }
+  if (loadError) return <div>{heading}<ErrorState title="Claims could not be loaded" message={loadError} /></div>
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 10 }} 
-      animate={{ opacity: 1, y: 0 }} 
-      transition={{ duration: 0.35, ease: "easeOut" }} 
-      className="flex flex-col h-[calc(100vh-5.5rem)] -m-6 overflow-hidden"
-    >
-      {/* Top Header Bar */}
-      <div className="px-6 py-3.5 glass-strong border-b border-white/10 flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div>
-          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 font-mono">
-            <span>VERIFIN</span>
-            <ChevronRight className="h-3 w-3 text-slate-600" />
-            <span className="text-amber-400">Provenance & Grounding</span>
-          </div>
-          <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2 mt-0.5">
-            <Database className="h-4 w-4 text-amber-400" />
-            Evidence Explorer
-          </h1>
-        </div>
-
-        {/* Verification run selector */}
-        <div className="flex items-center gap-2">
-          {finished.length > 0 && (
-            <div className="flex items-center gap-1.5 bg-black/40 border border-white/10 rounded-lg p-1 text-xs">
-              <span className="text-slate-400 text-[11px] px-2 font-mono">Run:</span>
-              <select
-                value={sessionId ?? ""}
-                onChange={(e) => setSearchParams({ session: e.target.value })}
-                className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer pr-2 max-w-[22rem]"
-              >
-                {finished.map((x) => (
-                  <option key={x.id} value={x.id} className="bg-slate-900 text-white">
-                    {(x.document_name ?? "Document") + " · " + new Date(x.created_at).toLocaleString()}
-                  </option>
-                ))}
-              </select>
+    <div>
+      {heading}
+      <div className="grid gap-4 lg:grid-cols-5">
+        {/* claim list */}
+        <Card className="flex max-h-[44rem] flex-col overflow-hidden lg:col-span-2">
+          <div className="space-y-3 border-b border-line p-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+              <Input aria-label="Search claims or retrieved text" placeholder="Search claims or retrieved text" value={query} onChange={(e) => setQuery(e.target.value)} className="h-9 pl-9" />
             </div>
+            <Segmented<StatusFilter>
+              label="Filter by verdict"
+              size="sm"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[{ value: "ALL", label: "All", count: claims.length }, ...VERDICT_ORDER.map((k) => { const V = VERDICTS[k]; return { value: k as StatusFilter, label: <span className="inline-flex items-center gap-1" title={V.label}><V.Icon className="size-3.5" aria-hidden="true" /><span className="max-xl:sr-only">{V.label}</span></span>, count: counts[k] } })]}
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto" role="listbox" aria-label="Claims">
+            {loadingClaims ? (
+              <div className="space-y-3 p-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-12" />)}</div>
+            ) : filtered.length === 0 ? (
+              <p className="px-4 py-12 text-center text-[13px] text-muted">No claims match this view.</p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {filtered.map((c) => {
+                  const cv = VERDICTS[normalizeVerdict(c.status)]
+                  const active = c.id === selected?.id
+                  return (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => choose(c.id)}
+                        className={cn("flex w-full flex-col gap-2 border-l-[3px] px-4 py-3 text-left transition-colors", active ? "bg-brand-tint" : "hover:bg-canvas")}
+                        style={{ borderLeftColor: active ? cv.color : "transparent" }}
+                      >
+                        <span className="line-clamp-2 text-[13px] font-medium leading-snug text-ink">{c.claim_text}</span>
+                        <span className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                          <StatusBadge status={c.status} size="sm" />
+                          {hasEvidence(c.evidence) ? <span className="num">Page {c.evidence.page_number}</span> : <span>No passage</span>}
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </Card>
+
+        {/* detail */}
+        <div ref={detail} className="scroll-mt-20 space-y-4 lg:col-span-3">
+          {selected && v ? (
+            <>
+              <Card className="space-y-3 p-5" style={{ borderLeft: `3px solid ${v.color}` }}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <StatusBadge status={selected.status} size="lg" />
+                  <ConfidenceIndicator value={selected.confidence} label="Confidence" />
+                </div>
+                <p className="text-[16px] leading-relaxed text-ink">“{selected.claim_text}”</p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+                  {rule && <span className="inline-flex items-center gap-1"><Scale className="size-3.5" aria-hidden="true" />Decided by <span className="font-medium text-ink">{rule.label}</span></span>}
+                  {session && <span>{session.document_name ?? "Document"} · {formatDateTime(session.created_at)}</span>}
+                  {selected.hallucination_type && selected.hallucination_type.toUpperCase() !== "NONE" && <span>Flagged: {humanize(selected.hallucination_type)}</span>}
+                </div>
+              </Card>
+
+              {(selected.reasoning_summary || rule) && (
+                <div className={cn("flex items-start gap-3 rounded-lg border p-4", v.tint, v.border)}>
+                  <Lightbulb className={cn("mt-0.5 size-4 shrink-0", v.text)} aria-hidden="true" />
+                  <div className="text-[13px] leading-relaxed">
+                    <div className={cn("font-semibold", v.text)}>Why this verdict</div>
+                    <p className="mt-0.5 text-ink">{selected.reasoning_summary || rule?.summary}</p>
+                  </div>
+                </div>
+              )}
+
+              <section aria-labelledby="passage">
+                <h2 id="passage" className="mb-2 text-[15px] font-semibold text-ink">Retrieved passage</h2>
+                <EvidencePanel evidence={selected.evidence} documentName={session?.document_name ?? undefined} />
+              </section>
+
+              {selected.nli && (
+                <Card className="p-5">
+                  <h2 className="mb-3 text-[15px] font-semibold text-ink">Language-inference scores</h2>
+                  <NliBar nli={selected.nli} />
+                </Card>
+              )}
+
+              <TechnicalDetails claim={selected} />
+
+              {sessionId && (
+                <div className="flex justify-end">
+                  <Link to={`/verify/results/${sessionId}/claim/${selected.id}`} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-brand-2 hover:underline">
+                    Open the full claim audit <ArrowRight className="size-3.5" />
+                  </Link>
+                </div>
+              )}
+            </>
+          ) : (
+            !loadingClaims && <EmptyState title="Select a claim" message="Choose a claim from the list to inspect its retrieved evidence and grounding details." />
           )}
         </div>
       </div>
-
-      {loadingSessions || loadingLive ? (
-        <div className="flex-1 flex items-center justify-center space-y-3">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 text-amber-400 animate-spin mx-auto mb-2" />
-            <p className="text-xs text-slate-400 font-mono">Loading hybrid retrieved evidence passages...</p>
-          </div>
-        </div>
-      ) : !sessionId ? (
-        <div className="flex-1 flex items-center justify-center px-6">
-          <div className="text-center space-y-3 max-w-sm">
-            <p className="text-sm text-white font-semibold">{sessionsError ?? "No finished verifications yet"}</p>
-            <p className="text-xs text-slate-400">Run a verification and its retrieved evidence appears here, claim by claim.</p>
-            <Link to="/verify" className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-semibold">
-              Start a verification <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-        </div>
-      ) : loadError ? (
-        <div className="flex-1 flex items-center justify-center text-xs text-rose-300 font-mono">{loadError}</div>
-      ) : (
-        <div className="flex flex-1 min-h-0">
-          {/* Claim list (Left Column) */}
-          <div className="w-[42%] lg:w-[38%] border-r border-white/10 glass-subtle flex flex-col min-h-0">
-            {/* Search & Status Filters */}
-            <div className="p-3 border-b border-white/10 bg-black/30 backdrop-blur-md space-y-2 shrink-0">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search claims or retrieved text..."
-                  className="h-8 w-full rounded-lg border border-white/10 bg-white/[0.04] pl-8 pr-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
-                />
-              </div>
-
-              {/* Status Chips */}
-              <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
-                {(["ALL", "SUPPORTED", "CONTRADICTED", "UNVERIFIABLE"] as StatusFilter[]).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setStatusFilter(tab)}
-                    className={`px-2 py-0.5 text-[10px] font-mono font-bold rounded uppercase transition-colors shrink-0 ${
-                      statusFilter === tab
-                        ? "bg-amber-500/20 text-amber-300 border border-amber-400/30"
-                        : "text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Scrollable list */}
-            <div className="flex-1 overflow-y-auto divide-y divide-white/5">
-              {filteredClaims.length === 0 ? (
-                <div className="text-center py-12 px-4 text-slate-500 text-xs">
-                  No claims found matching this criteria
-                </div>
-              ) : (
-                filteredClaims.map((c) => {
-                  const meta = verdictMeta(c.status)
-                  const active = c.id === selected?.id
-                  return (
-                    <button
-                      key={c.id}
-                      onClick={() => setSelectedId(c.id)}
-                      className={`w-full text-left p-3.5 transition-all text-xs relative ${
-                        active 
-                          ? "bg-amber-500/15 border-l-2 border-amber-400 shadow-inner" 
-                          : "hover:bg-white/[0.04] border-l-2 border-transparent"
-                      }`}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${meta.dot} ${active ? "animate-pulse" : ""}`} />
-                        <div className="min-w-0 flex-1">
-                          <p className={`font-medium leading-snug line-clamp-2 ${active ? "text-white font-semibold" : "text-slate-300"}`}>
-                            "{c.claim_text}"
-                          </p>
-                          <div className="flex flex-wrap items-center gap-2 mt-2">
-                            <span className={`text-[10px] uppercase font-bold tracking-wider font-mono ${meta.color}`}>
-                              {meta.label}
-                            </span>
-                            {c.evidence?.page_number && c.evidence.page_number > 0 && (
-                              <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-1 rounded">
-                                p. {c.evidence.page_number}
-                              </span>
-                            )}
-                            {c.evidence?.retrieval_method && (
-                              <span className="text-[9px] font-mono text-indigo-300 bg-indigo-500/10 px-1 rounded">
-                                {c.evidence.retrieval_method}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Evidence Passage Detail (Right Column) */}
-          <div className="flex-1 overflow-y-auto p-6 lg:p-8 glass-strong min-h-0 space-y-6">
-            {selected ? (
-              <motion.div 
-                key={selected.id}
-                initial={{ opacity: 0, x: 10 }} 
-                animate={{ opacity: 1, x: 0 }} 
-                transition={{ duration: 0.2 }}
-                className="max-w-2xl space-y-6"
-              >
-                {/* Claim Box */}
-                <div className="glass-card p-5 space-y-3 relative overflow-hidden">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <selectedMeta.icon className={`h-4 w-4 ${selectedMeta.color}`} />
-                      <Badge className={selectedMeta.badge}>
-                        {selectedMeta.label}
-                      </Badge>
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-400">
-                      {selected.decided_by ? `Decided by: ${selected.decided_by} · ` : ""}{selected.sessionTitle}
-                    </span>
-                  </div>
-
-                  <p className="text-base font-serif italic text-white leading-relaxed">
-                    "{selected.claim_text}"
-                  </p>
-                </div>
-
-                {/* DeBERTa NLI Breakdown */}
-                {selected.nli && (
-                  <div className="glass-card p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
-                        Natural Language Inference (DeBERTa-v3)
-                      </div>
-                      <Badge variant="outline" className="text-[10px] font-mono border-white/10 text-slate-300">
-                        Cross-Encoder Signal
-                      </Badge>
-                    </div>
-                    
-                    <div className="h-2.5 w-full bg-black/40 rounded-full overflow-hidden flex border border-white/5">
-                      <motion.div 
-                        initial={{ width: 0 }} 
-                        animate={{ width: `${selected.nli.entailment * 100}%` }} 
-                        transition={{ duration: 0.6, ease: "easeOut" }} 
-                        className="h-full bg-emerald-500" 
-                        title={`Entailment ${(selected.nli.entailment * 100).toFixed(1)}%`}
-                      />
-                      <motion.div 
-                        initial={{ width: 0 }} 
-                        animate={{ width: `${selected.nli.neutral * 100}%` }} 
-                        transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }} 
-                        className="h-full bg-slate-500" 
-                        title={`Neutral ${(selected.nli.neutral * 100).toFixed(1)}%`}
-                      />
-                      <motion.div 
-                        initial={{ width: 0 }} 
-                        animate={{ width: `${selected.nli.contradiction * 100}%` }} 
-                        transition={{ duration: 0.6, ease: "easeOut", delay: 0.2 }} 
-                        className="h-full bg-rose-500" 
-                        title={`Contradiction ${(selected.nli.contradiction * 100).toFixed(1)}%`}
-                      />
-                    </div>
-                    
-                    <div className="flex justify-between text-[11px] font-mono text-slate-400 pt-1">
-                      <span className="text-emerald-300">Entailment {(selected.nli.entailment * 100).toFixed(1)}%</span>
-                      <span className="text-slate-400">Neutral {(selected.nli.neutral * 100).toFixed(1)}%</span>
-                      <span className="text-rose-300">Contradiction {(selected.nli.contradiction * 100).toFixed(1)}%</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Numerical Finding if present */}
-                {selected.numerical_finding && selected.numerical_finding.comparison_outcome !== "NO_CALCULATION" && (
-                  <div className="glass-card p-4 space-y-2 border-amber-500/20 bg-amber-500/5">
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 text-amber-300 font-semibold font-mono">
-                        <Calculator className="h-3.5 w-3.5 text-amber-400" />
-                        <span>Deterministic Numerical Audit</span>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] font-mono text-amber-300 border-amber-400/30">
-                        {selected.numerical_finding.comparison_outcome}
-                      </Badge>
-                    </div>
-                    {selected.numerical_finding.formula && (
-                      <div className="p-2 rounded bg-black/40 font-mono text-[11px] text-amber-200 border border-white/5">
-                        {selected.numerical_finding.formula}
-                      </div>
-                    )}
-                    <p className="text-slate-300 text-xs leading-relaxed">
-                      {selected.numerical_finding.explanation}
-                    </p>
-                  </div>
-                )}
-
-                {/* Temporal Anchor if present */}
-                {selected.temporal_anchor && selected.temporal_anchor.period_match !== "UNSPECIFIED" && (
-                  <div className="glass-card p-4 space-y-2 border-cyan-500/20 bg-cyan-500/5">
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 text-cyan-300 font-semibold font-mono">
-                        <Calendar className="h-3.5 w-3.5 text-cyan-400" />
-                        <span>Temporal Grounding Alignment</span>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] font-mono text-cyan-300 border-cyan-400/30">
-                        {selected.temporal_anchor.period_match}
-                      </Badge>
-                    </div>
-                    <p className="text-slate-300 text-xs leading-relaxed">
-                      {selected.temporal_anchor.explanation}
-                    </p>
-                  </div>
-                )}
-
-                {/* Hallucination Summary if present */}
-                {selected.reasoning_summary && (
-                  <div className="glass-card p-4 space-y-2 border-rose-500/20 bg-rose-500/5">
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 text-rose-300 font-semibold font-mono">
-                        <ShieldAlert className="h-3.5 w-3.5 text-rose-400" />
-                        <span>Hallucination Diagnostic</span>
-                      </div>
-                      {selected.hallucination_type && (
-                        <Badge variant="outline" className="text-[10px] font-mono text-rose-300 border-rose-400/30">
-                          {selected.hallucination_type.replace(/_/g, " ")}
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-slate-300 text-xs leading-relaxed">
-                      {selected.reasoning_summary}
-                    </p>
-                  </div>
-                )}
-
-                {/* Retrieved Document Excerpt Card */}
-                <div className="glass-card p-5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-amber-400" />
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
-                        Retrieved Document Excerpt
-                      </span>
-                    </div>
-                    {selected.evidence && selected.evidence.page_number > 0 && (
-                      <Badge variant="outline" className="text-[11px] font-mono text-slate-300 border-white/10">
-                        Page {selected.evidence.page_number}
-                      </Badge>
-                    )}
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-black/40 border border-white/5">
-                    <p className="text-sm font-serif italic text-slate-200 leading-relaxed">
-                      {selected.evidence && selected.evidence.page_number > 0
-                        ? `"${selected.evidence.text}"`
-                        : "No matching passage was retrieved from the source document."}
-                    </p>
-                  </div>
-
-                  {/* Retrieval Provenance Breakdown */}
-                  {selected.evidence && selected.evidence.similarity_score > 0 && (
-                    <div className="space-y-2 pt-2 border-t border-white/5">
-                      <div className="grid grid-cols-3 gap-2 text-[11px] font-mono">
-                        <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-                          <span className="text-[9px] uppercase text-slate-500 block">Hybrid Score</span>
-                          <span className="text-indigo-300 font-bold">{(selected.evidence.similarity_score * 100).toFixed(1)}%</span>
-                        </div>
-                        {selected.evidence.dense_score != null && (
-                          <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-                            <span className="text-[9px] uppercase text-slate-500 block">Dense Sim</span>
-                            <span className="text-white font-bold">{(selected.evidence.dense_score * 100).toFixed(1)}%</span>
-                          </div>
-                        )}
-                        {selected.evidence.bm25_score != null && (
-                          <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-                            <span className="text-[9px] uppercase text-slate-500 block">BM25 Lexical</span>
-                            <span className="text-amber-300 font-bold">{selected.evidence.bm25_score.toFixed(2)}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {selected.evidence.matched_keywords && selected.evidence.matched_keywords.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          <span className="text-[10px] font-mono text-slate-500 uppercase mr-1">Matched Terms:</span>
-                          {selected.evidence.matched_keywords.map((kw: string, ki: number) => (
-                            <Badge key={ki} variant="outline" className="text-slate-300 border-white/10 bg-white/5 font-mono text-[9px] px-1.5 py-0">
-                              <Hash className="h-2.5 w-2.5 mr-0.5 text-amber-400" /> {kw}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Audit Deep Dive Link */}
-                <div className="pt-2 flex justify-end">
-                  <Link
-                    to={`/verify/results/${selected.sessionId}/claim/${selected.id}`}
-                    className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-semibold transition-colors"
-                  >
-                    Open Complete Deep-Dive Audit <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                </div>
-              </motion.div>
-            ) : (
-              <div className="text-center py-20 text-slate-500 text-xs font-mono">
-                Select a claim from the list to inspect its retrieved evidence and grounding details.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </motion.div>
+    </div>
   )
 }

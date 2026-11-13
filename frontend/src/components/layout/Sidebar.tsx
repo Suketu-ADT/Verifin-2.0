@@ -1,131 +1,182 @@
-import { motion } from "framer-motion"
-import { Link, useLocation } from "react-router-dom"
-import { 
-  FileSearch, History, Search, Activity, Settings, FileText,
-  LayoutDashboard, BarChart3, Gauge, X, ShieldCheck, Shield, Sparkles, Layers, UserCog, UserCircle,
-} from "lucide-react"
-import { useAuth } from "../../lib/AuthContext"
+import { useEffect, useRef } from "react"
+import { Link, useLocation, useNavigate } from "react-router-dom"
+import { ChevronsUpDown, LogOut, PanelLeftClose, PanelLeftOpen, Settings, ShieldCheck, UserCircle, X } from "lucide-react"
+import { Dropdown, DropdownItem, DropdownLabel, DropdownSeparator } from "@/components/ui/dropdown"
+import { cn } from "@/lib/utils"
+import { initials } from "@/lib/format"
+import { useAuth } from "@/lib/AuthContext"
+import { NAV, isActive } from "./nav"
 
 interface SidebarProps {
-  isOpen: boolean
-  onClose: () => void
+  collapsed: boolean
+  onToggleCollapsed: () => void
+  /** Drawer state on screens below the lg breakpoint. */
+  drawerOpen: boolean
+  onCloseDrawer: () => void
+  isDesktop: boolean
 }
 
-export default function Sidebar({ isOpen, onClose }: SidebarProps) {
-  const location = useLocation()
-  const { user } = useAuth()
-
-  const navItems = [
-    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "New Verification", href: "/verify", icon: FileSearch, badge: "Hybrid RAG", badgeColor: "bg-indigo-500/15 text-indigo-300 border-indigo-400/30" },
-    { name: "Review Queue", href: "/review", icon: ShieldCheck },
-    { name: "Evidence Explorer", href: "/evidence", icon: Search },
-    { name: "History", href: "/history", icon: History },
-    { name: "Analytics", href: "/analytics", icon: BarChart3 },
-    { name: "Benchmark", href: "/benchmark", icon: Gauge },
-    { name: "Reports", href: "/reports", icon: FileText },
-    { name: "System Status", href: "/system", icon: Activity },
-    { name: "Settings", href: "/settings", icon: Settings },
-    ...(user && user.id !== "anonymous" ? [{ name: "My Account", href: "/account", icon: UserCircle }] : []),
-    ...(user?.role === "admin" ? [{ name: "Administration", href: "/admin", icon: UserCog }] : []),
-  ]
-
+function Brand({ collapsed }: { collapsed: boolean }) {
   return (
-    <div className={`fixed lg:static inset-y-0 left-0 z-50 h-full p-3 transform transition-transform duration-200 ease-in-out ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}>
-      <div className="w-72 glass-strong rounded-2xl flex flex-col h-full overflow-hidden border border-white/10 shadow-2xl">
-        {/* Brand header */}
-        <div className="p-5 border-b border-white/8 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-3 group">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.35)] group-hover:shadow-[0_0_25px_rgba(245,158,11,0.5)] transition-all">
-              <Shield className="h-5 w-5 text-neutral-950 stroke-[2.5]" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-lg font-black tracking-tight text-white group-hover:text-amber-300 transition-colors">
-                  VERIFIN
-                </span>
-                <span className="text-[10px] font-bold font-mono px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                  2.0
-                </span>
-              </div>
-              <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400">
-                Hallucination Guard
-              </p>
-            </div>
-          </Link>
-          <button
-            className="lg:hidden p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/5"
-            onClick={onClose}
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Navigation list */}
-        <nav className="flex-1 p-3.5 space-y-1 overflow-y-auto">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1.5">
-            Core Verification
-          </div>
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.href || 
-              (item.href !== "/dashboard" && location.pathname.startsWith(item.href))
-            return (
-              <Link
-                key={item.name}
-                to={item.href}
-                onClick={onClose}
-                className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all text-xs font-semibold relative overflow-hidden group ${
-                  isActive
-                    ? "text-white bg-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_4px_12px_rgba(0,0,0,0.4)]"
-                    : "text-slate-400 hover:text-white hover:bg-white/[0.04]"
-                }`}
-              >
-                {isActive && (
-                  <motion.div 
-                    layoutId="activeNavIndicator"
-                    className="absolute left-0 top-1 bottom-1 w-1 bg-gradient-to-b from-amber-400 to-amber-500 rounded-r-full shadow-[0_0_10px_#f59e0b]"
-                    transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                  />
-                )}
-                <div className="flex items-center space-x-3 relative z-10">
-                  <item.icon className={`h-4 w-4 transition-colors ${isActive ? "text-amber-400" : "text-slate-400 group-hover:text-slate-200"}`} />
-                  <span className="relative z-10">{item.name}</span>
-                </div>
-                {item.badge && (
-                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${item.badgeColor}`}>
-                    {item.badge}
-                  </span>
-                )}
-              </Link>
-            )
-          })}
-        </nav>
-
-        {/* Telemetry pill */}
-        <div className="p-4 border-t border-white/8 bg-black/20">
-          <div className="glass-subtle rounded-xl p-3 border border-white/8 space-y-2">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-400 flex items-center gap-1.5">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-                </span>
-                Engine Status
-              </span>
-              <span className="text-emerald-400 font-mono font-bold text-[10px]">LIVE</span>
-            </div>
-            <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-              <span>Dual RAG:</span>
-              <span className="text-indigo-300 font-bold">Dense + BM25</span>
-            </div>
-            <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-              <span>NLI Model:</span>
-              <span className="text-slate-300">DeBERTa-v3</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <Link to="/dashboard" className="flex min-w-0 items-center gap-3 rounded-md outline-offset-4" aria-label="VERIFIN home">
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-2 to-brand ring-1 ring-white/15">
+        <ShieldCheck className="size-5 text-white" aria-hidden="true" />
+      </span>
+      {!collapsed && (
+        <span className="min-w-0 leading-tight">
+          <span className="block text-[15px] font-semibold tracking-[0.04em] text-white">VERIFIN <span className="font-normal text-white/50">2.0</span></span>
+          <span className="block truncate text-[11px] text-white/50">Evidence-based verification</span>
+        </span>
+      )}
+    </Link>
   )
 }
 
+export function Sidebar({ collapsed, onToggleCollapsed, drawerOpen, onCloseDrawer, isDesktop }: SidebarProps) {
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const { user, authDisabled, logout } = useAuth()
+  // inside the drawer the labels always show; the collapsed rail only exists on desktop
+  const rail = collapsed && isDesktop
+
+  const closeButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!isDesktop && drawerOpen) {
+      // focus moves into the drawer while it is open and returns to the menu button after
+      const opener = document.activeElement as HTMLElement | null
+      const focusTimer = window.setTimeout(() => closeButton.current?.focus(), 0)
+      const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCloseDrawer()
+      document.addEventListener("keydown", onKey)
+      return () => {
+        window.clearTimeout(focusTimer)
+        document.removeEventListener("keydown", onKey)
+        opener?.focus?.()
+      }
+    }
+  }, [isDesktop, drawerOpen, onCloseDrawer])
+
+  const items = NAV.filter((n) => !n.role || user?.role === n.role)
+  const groups = [...new Set(items.map((i) => i.group))]
+  const displayName = authDisabled ? "Local mode" : user?.name || user?.email || "Account"
+
+  return (
+    <>
+      {!isDesktop && drawerOpen && <div className="fixed inset-0 z-40 bg-navy/60 animate-fade-in" onClick={onCloseDrawer} aria-hidden="true" />}
+      <aside
+        aria-label="Primary"
+        inert={!isDesktop && !drawerOpen}
+        className={cn(
+          "on-navy flex h-dvh flex-col bg-navy text-white transition-[width,transform] duration-200 ease-out",
+          isDesktop
+            ? cn("sticky top-0 z-40 shrink-0", rail ? "w-[72px]" : "w-64")
+            : cn("fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] shadow-lg", drawerOpen ? "translate-x-0" : "-translate-x-full"),
+        )}
+      >
+        <div className={cn("flex h-16 shrink-0 items-center border-b border-navy-line", rail ? "justify-center px-2" : "justify-between px-4")}>
+          <Brand collapsed={rail} />
+          {!isDesktop && (
+            <button ref={closeButton} type="button" onClick={onCloseDrawer} className="rounded-md p-2 text-white/70 hover:bg-white/10 hover:text-white" aria-label="Close navigation">
+              <X className="size-5" />
+            </button>
+          )}
+        </div>
+
+        <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label="Main">
+          {groups.map((group, gi) => (
+            <div key={group} className={cn(gi > 0 && "mt-5")}>
+              {rail ? (
+                gi > 0 && <div className="mx-2 mb-3 h-px bg-navy-line" role="separator" />
+              ) : (
+                <div className="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-white/40">{group}</div>
+              )}
+              <ul className="space-y-0.5">
+                {items.filter((i) => i.group === group).map((item) => {
+                  const active = isActive(item, pathname)
+                  return (
+                    <li key={item.to}>
+                      <Link
+                        to={item.to}
+                        onClick={onCloseDrawer}
+                        aria-current={active ? "page" : undefined}
+                        title={rail ? item.label : undefined}
+                        className={cn(
+                          "group relative flex h-10 items-center gap-3 rounded-md text-[13.5px] font-medium transition-[background-color,color] duration-[var(--motion-fast)] ease-[var(--ease-out-soft)] active:bg-white/[0.14]",
+                          rail ? "justify-center px-0" : "px-3",
+                          active ? "bg-white/10 text-white" : "text-white/65 hover:bg-white/[0.06] hover:text-white",
+                        )}
+                      >
+                        {active && <span className="animate-fade-in absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-sky" aria-hidden="true" />}
+                        <item.icon className={cn("size-[18px] shrink-0 transition-colors duration-[var(--motion-fast)]", active ? "text-sky" : "text-white/55 group-hover:text-white/90")} strokeWidth={1.75} aria-hidden="true" />
+                        {rail ? <span className="sr-only">{item.label}</span> : <span className="truncate">{item.label}</span>}
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
+
+        <div className="shrink-0 space-y-1 border-t border-navy-line p-3">
+          {isDesktop && (
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-pressed={collapsed}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className={cn("flex h-9 w-full items-center gap-3 rounded-md text-[13px] text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white", rail ? "justify-center" : "px-3")}
+            >
+              {collapsed ? <PanelLeftOpen className="size-[18px]" strokeWidth={1.75} /> : <PanelLeftClose className="size-[18px]" strokeWidth={1.75} />}
+              {!rail && "Collapse"}
+            </button>
+          )}
+          {user && (
+            <Dropdown
+              placement="top-start"
+              className="w-full"
+              menuClassName={cn("w-60", rail && "left-0")}
+              trigger={({ props }) => (
+                <button
+                  type="button"
+                  {...props}
+                  className={cn("flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors hover:bg-white/[0.06]", rail && "justify-center")}
+                  aria-label={`Account menu for ${displayName}`}
+                >
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-2 text-xs font-semibold text-white ring-1 ring-white/20">{initials(user.name || user.email)}</span>
+                  {!rail && (
+                    <>
+                      <span className="min-w-0 flex-1 leading-tight">
+                        <span className="block truncate text-[13px] font-medium text-white">{displayName}</span>
+                        <span className="block truncate text-[11px] capitalize text-white/50">{authDisabled ? "Authentication off" : user.role}</span>
+                      </span>
+                      <ChevronsUpDown className="size-4 shrink-0 text-white/40" aria-hidden="true" />
+                    </>
+                  )}
+                </button>
+              )}
+            >
+              {(close) => (
+                <>
+                  <DropdownLabel>
+                    <span className="block truncate text-[13px] font-medium text-ink">{displayName}</span>
+                    {!authDisabled && <span className="block truncate">{user.email}</span>}
+                  </DropdownLabel>
+                  <DropdownSeparator />
+                  {!authDisabled && <DropdownItem icon={UserCircle} to="/account" close={() => { close(); onCloseDrawer() }}>My account</DropdownItem>}
+                  <DropdownItem icon={Settings} to="/settings" close={() => { close(); onCloseDrawer() }}>Settings</DropdownItem>
+                  {!authDisabled && (
+                    <>
+                      <DropdownSeparator />
+                      <DropdownItem icon={LogOut} danger close={close} onSelect={() => { logout(); navigate("/login") }}>Sign out</DropdownItem>
+                    </>
+                  )}
+                </>
+              )}
+            </Dropdown>
+          )}
+        </div>
+      </aside>
+    </>
+  )
+}

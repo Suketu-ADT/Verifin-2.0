@@ -1,299 +1,171 @@
-import { motion } from "framer-motion"
-import { useState, useEffect } from "react"
-import { Badge } from "../components/ui/badge"
-import { Button } from "../components/ui/button"
-import { 
-  Server, 
-  AlertCircle, 
-  RefreshCw, 
-  CheckCircle2, 
-  Database, 
-  Cpu, 
-  Layers, 
-  Bot,
-  ChevronRight,
-  Activity,
-  Zap,
-  Shield,
-  ShieldCheck,
-  Code2
-} from "lucide-react"
-import { getSystemHealth, getLlmHealth, type HealthResponse } from "../lib/api"
+import { useCallback, useEffect, useState } from "react"
+import { Bot, Cpu, Database, Layers, RefreshCw, Server, type LucideIcon } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardBody, CardHeader, DetailRow } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeading } from "@/components/shared/PageHeading"
+import { DataTable, type Column } from "@/components/shared/DataTable"
+import { Notice } from "@/components/shared/states"
+import { cn } from "@/lib/utils"
+import { getEngineConfig, getSystemHealth, type EngineConfig, type HealthResponse } from "../lib/api"
 
-const endpoints = [
-  { method: "POST", path: "/api/documents/upload", desc: "Upload a financial document (PDF) and initiate OCR parsing & chunking", params: "file: multipart/form-data" },
-  { method: "POST", path: "/api/verification/start", desc: "Execute BM25 Hybrid RAG + DeBERTa-v3 cross-encoder verification for an LLM answer", params: "document_id, answer_text, prompt" },
-  { method: "GET", path: "/api/verification/{id}/results", desc: "Retrieve verified claim verdicts, numerical audits, temporal grounding, and confidence distribution", params: "id: string" },
-  { method: "GET", path: "/api/review/queue", desc: "Query quarantine queue of ambiguous OCR numerical figures requiring human review", params: "limit?: number, status?: string" },
-  { method: "POST", path: "/api/review/{id}/decision", desc: "Submit immutable analyst verification decision (accept, correct, reject)", params: "reviewer_id, action, reason, corrected_val" },
-  { method: "POST", path: "/api/demo/run", desc: "Execute end-to-end demo verification on SEC Apple FY2025 10-K excerpt", params: "none" },
-  { method: "GET", path: "/api/system/health", desc: "Poll live subsystem status, MongoDB cluster connection, and pipeline health", params: "none" },
-  { method: "GET", path: "/api/llm/health", desc: "Query configured LLM provider and decomposition service status", params: "none" },
+type Tone = "ok" | "warn" | "bad" | "idle"
+
+const TONE: Record<Tone, { dot: string; badge: "success" | "warning" | "danger" | "neutral" }> = {
+  ok: { dot: "bg-supported", badge: "success" },
+  warn: { dot: "bg-unverifiable", badge: "warning" },
+  bad: { dot: "bg-contradicted", badge: "danger" },
+  idle: { dot: "bg-faint", badge: "neutral" },
+}
+
+interface ServiceView { key: string; name: string; icon: LucideIcon; tone: Tone; state: string; detail: string }
+
+/** Every state here comes from /system/health; while it has not answered, nothing is claimed. */
+function services(health: HealthResponse | null, config: EngineConfig | null, offline: boolean): ServiceView[] {
+  const s = health?.services
+  const pending = !health && !offline
+  const unknown = (v: string | undefined) => (pending ? "Checking…" : offline ? "Unknown" : v ?? "Unknown")
+  return [
+    {
+      key: "backend", name: "API server", icon: Server,
+      tone: s?.backend === "healthy" ? "ok" : offline ? "bad" : "idle",
+      state: s?.backend === "healthy" ? "Healthy" : offline ? "Unreachable" : unknown(s?.backend),
+      detail: offline ? "The browser could not reach the API." : "Answers requests from this app.",
+    },
+    {
+      key: "database", name: "Database", icon: Database,
+      tone: s?.database === "healthy" ? "ok" : s?.database === "fallback" ? "warn" : s?.database === "unhealthy" ? "bad" : "idle",
+      state: s?.database === "healthy" ? "Connected" : s?.database === "fallback" ? "Local fallback" : s?.database === "unhealthy" ? "Unavailable" : unknown(s?.database),
+      detail: s?.database === "fallback" ? "The cluster could not be reached, so data is held in a local file. It is not in the shared database." : "Stores documents, verifications and audit records.",
+    },
+    {
+      key: "embedding", name: "Embedding model", icon: Layers,
+      tone: s?.embedding === "healthy" ? "ok" : s?.embedding ? "bad" : "idle",
+      state: s?.embedding === "healthy" ? "Ready" : s?.embedding ? "Unavailable" : unknown(s?.embedding),
+      detail: config ? `${config.models.embedding}. Finds passages by meaning.` : "Finds passages by meaning.",
+    },
+    {
+      key: "nli", name: "Inference model", icon: Cpu,
+      tone: s?.nli === "healthy" ? "ok" : s?.nli ? "bad" : "idle",
+      state: s?.nli === "healthy" ? "Ready" : s?.nli ? "Unavailable" : unknown(s?.nli),
+      detail: config ? `${config.models.nli}. Compares claims with evidence.` : "Compares claims with evidence.",
+    },
+    {
+      key: "llm", name: "Claim-extraction LLM", icon: Bot,
+      tone: s?.llm === "ready" ? "ok" : s?.llm === "unconfigured" ? "warn" : "idle",
+      state: s?.llm === "ready" ? "Configured" : s?.llm === "unconfigured" ? "Not configured" : unknown(s?.llm),
+      detail: s?.llm === "unconfigured" ? "No provider key is set, so drafting claims from a document is unavailable. Pasted statements still verify." : config?.llm.provider ? `Provider: ${config.llm.provider}${config.llm.model ? ` · ${config.llm.model}` : ""}. Only splits text into claims.` : "Only splits text into claims, never decides a verdict.",
+    },
+  ]
+}
+
+interface Endpoint { method: "GET" | "POST"; path: string; desc: string; payload: string; admin?: boolean }
+
+/** The routes this app calls, as registered by the API (all under /api/v1). */
+const ENDPOINTS: Endpoint[] = [
+  { method: "POST", path: "/api/v1/documents/upload", desc: "Upload a PDF; it is parsed, OCR'd if scanned, and indexed for retrieval", payload: "file (multipart/form-data)" },
+  { method: "POST", path: "/api/v1/documents/{id}/extract-facts", desc: "Draft claims from a document with the configured LLM", payload: "none" },
+  { method: "POST", path: "/api/v1/verification/start", desc: "Verify an AI answer against an uploaded document", payload: "document_id, llm_output, retrieval_mode?" },
+  { method: "GET", path: "/api/v1/verification", desc: "List recent verifications", payload: "limit?" },
+  { method: "GET", path: "/api/v1/verification/{id}/results", desc: "Claim verdicts with evidence, rule and risk for one verification", payload: "none" },
+  { method: "GET", path: "/api/v1/analytics/overview", desc: "Usage statistics over a time range", payload: "days" },
+  { method: "GET", path: "/api/v1/review/queue", desc: "Uncertain scanned figures waiting for a human decision", payload: "document_id?" },
+  { method: "POST", path: "/api/v1/review/{id}/decide", desc: "Record an accept, correct or reject decision", payload: "reviewer_id, action, reason, corrected_value?" },
+  { method: "GET", path: "/api/v1/system/health", desc: "Status of the API, database and models", payload: "none" },
+  { method: "GET", path: "/api/v1/system/llm/health", desc: "Detailed LLM provider status", payload: "none", admin: true },
 ]
 
 export default function SystemStatus() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
-  const [llmHealth, setLlmHealth] = useState<any>(null)
+  const [config, setConfig] = useState<EngineConfig | null>(null)
+  const [offline, setOffline] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [lastChecked, setLastChecked] = useState<string>(new Date().toLocaleTimeString())
-  const [error, setError] = useState<string | null>(null)
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null)
 
-  const fetchHealth = () => {
+  const poll = useCallback(() => {
     setLoading(true)
-    setError(null)
-    Promise.allSettled([getSystemHealth(), getLlmHealth()])
-      .then(([healthRes, llmRes]) => {
-        if (healthRes.status === "fulfilled") {
-          setHealth(healthRes.value)
-        } else {
-          setError("Backend service unreachable on default port 8000.")
-        }
-        if (llmRes.status === "fulfilled") {
-          setLlmHealth(llmRes.value)
-        }
-        setLastChecked(new Date().toLocaleTimeString())
-        setLoading(false)
-      })
-      .catch((err) => {
-        setError(err?.message || "Failed to connect to backend service.")
-        setLoading(false)
-      })
-  }
-
-  useEffect(() => {
-    fetchHealth()
+    Promise.allSettled([getSystemHealth(), getEngineConfig()]).then(([h, c]) => {
+      if (h.status === "fulfilled") { setHealth(h.value); setOffline(false) } else { setHealth(null); setOffline(true) }
+      if (c.status === "fulfilled") setConfig(c.value)
+      setCheckedAt(new Date())
+      setLoading(false)
+    })
   }, [])
+  useEffect(() => poll(), [poll])
+
+  const list = services(health, config, offline)
+  const overall: { tone: Tone; text: string } = offline
+    ? { tone: "bad", text: "The API is unreachable" }
+    : !health ? { tone: "idle", text: "Checking the engine…" }
+    : health.status === "healthy" ? { tone: "ok", text: "All required services are running" }
+    : { tone: "warn", text: "Degraded: one or more required services are down" }
+
+  const columns: Column<Endpoint>[] = [
+    { key: "method", header: "Method", className: "w-20", cell: (e) => <Badge tone={e.method === "POST" ? "brand" : "neutral"} className="font-mono">{e.method}</Badge> },
+    { key: "path", header: "Path", cell: (e) => <code className="break-all text-xs font-medium text-ink">{e.path}</code> },
+    { key: "desc", header: "Purpose", hideBelow: "md", cell: (e) => <span className="text-muted">{e.desc}{e.admin && <Badge tone="outline" className="ml-2">Admin</Badge>}</span> },
+    { key: "payload", header: "Input", hideBelow: "lg", cell: (e) => <span className="font-mono text-xs text-muted">{e.payload}</span> },
+  ]
 
   return (
-    <motion.div 
-      initial="hidden" 
-      animate="show" 
-      variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08 } } }} 
-      className="max-w-6xl mx-auto space-y-6"
-    >
-      {/* Header & Breadcrumb */}
-      <motion.div variants={{ hidden: { opacity: 0, y: 15 }, show: { opacity: 1, y: 0 } }} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 font-mono">
-            <span>VERIFIN</span>
-            <ChevronRight className="h-3 w-3 text-slate-600" />
-            <span className="text-amber-400">System Operations</span>
-            <ChevronRight className="h-3 w-3 text-slate-600" />
-            <span className="text-slate-300">Infrastructure & Engine</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center glow-emerald">
-              <Activity className="h-4.5 w-4.5 text-emerald-400" />
-            </div>
-            Infrastructure Telemetry & API Catalog
-          </h1>
-          <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Live health verification of backend microservices, vector retrieval engines, and registered FastAPI REST endpoints.
-          </p>
-        </div>
+    <div className="space-y-6">
+      <PageHeading
+        title="System status"
+        subtitle="Live health of the API, database and models, read from the server when you open this page."
+        actions={
+          <>
+            {checkedAt && <span className="num text-xs text-muted">Checked {checkedAt.toLocaleTimeString()}</span>}
+            <Button size="sm" onClick={poll} loading={loading}>{!loading && <RefreshCw />} Check now</Button>
+          </>
+        }
+      />
 
-        <div className="flex items-center gap-2.5 shrink-0">
-          <span className="text-[10px] font-mono text-slate-500">
-            Last polled: {lastChecked}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchHealth}
-            disabled={loading}
-            className="text-xs border-white/10 hover:bg-white/5 transition-colors font-semibold"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? "animate-spin text-emerald-400" : ""}`} />
-            Poll Telemetry
-          </Button>
-        </div>
-      </motion.div>
+      <div className={cn("flex items-center gap-3 rounded-lg border p-4", overall.tone === "ok" ? "border-supported-line bg-supported-tint" : overall.tone === "warn" ? "border-unverifiable-line bg-unverifiable-tint" : overall.tone === "bad" ? "border-contradicted-line bg-contradicted-tint" : "border-line bg-surface")} role="status">
+        <span className={cn("size-2.5 rounded-full", TONE[overall.tone].dot)} aria-hidden="true" />
+        <span className="text-[15px] font-semibold text-ink">{overall.text}</span>
+        {offline && <span className="text-[13px] text-muted">Check that the server is running and the address is correct.</span>}
+      </div>
 
-      {/* Live Subsystem Matrix */}
-      <motion.div variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
-        {/* Backend API */}
-        <div className="glass-card p-4 space-y-2 relative overflow-hidden group">
-          <div className="flex items-center justify-between">
-            <div className="w-7 h-7 rounded-md bg-white/5 border border-white/10 flex items-center justify-center">
-              <Server className="h-4 w-4 text-slate-300" />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {list.map((s) => (
+          <Card key={s.key} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <span className="grid size-9 shrink-0 place-items-center rounded-md border border-line bg-subtle text-muted"><s.icon className="size-4" aria-hidden="true" /></span>
+              {!health && !offline ? <Skeleton className="h-5 w-20" /> : <Badge tone={TONE[s.tone].badge}><span className={cn("size-1.5 rounded-full", TONE[s.tone].dot)} aria-hidden="true" />{s.state}</Badge>}
             </div>
-            {health?.services?.backend === "healthy" ? (
-              <Badge className="bg-emerald-500/10 text-emerald-300 border-emerald-500/30 text-[10px] font-mono">
-                200 OK
-              </Badge>
-            ) : error ? (
-              <Badge className="bg-rose-500/10 text-rose-300 border-rose-500/30 text-[10px] font-mono">
-                Offline
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-[10px] font-mono">Checking...</Badge>
-            )}
-          </div>
+            <div className="mt-3 text-[13px] font-semibold text-ink">{s.name}</div>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted">{s.detail}</p>
+          </Card>
+        ))}
+      </div>
+
+      {health?.services.database === "fallback" && (
+        <Notice tone="warning" title="Running on the local fallback database">
+          Work done now is stored in a file on the server, not in the shared cluster. Restore the database connection before relying on this data.
+        </Notice>
+      )}
+
+      {config && (
+        <Card>
+          <CardHeader title="Engine in use" description="Read from the server's configuration. Change these in its environment, not here." />
+          <CardBody>
+            <DetailRow label="Pipeline version">{config.pipeline_version}</DetailRow>
+            <DetailRow label="Evidence search">{config.retrieval.mode} · {config.retrieval.fusion.toUpperCase()} · top {config.retrieval.top_k}</DetailRow>
+            <DetailRow label="Disabled checks">{config.policy.disabled_checks.join(", ") || "None"}</DetailRow>
+          </CardBody>
+        </Card>
+      )}
+
+      <section aria-labelledby="endpoints" className="space-y-3">
+        <div className="flex items-start gap-2">
           <div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">FastAPI Core</div>
-            <div className="text-xs font-semibold text-white mt-0.5">
-              {health?.services?.backend === "healthy" ? "High Availability" : error ? "Disconnected" : "Connecting..."}
-            </div>
+            <h2 id="endpoints" className="text-lg font-semibold tracking-tight text-ink">API reference</h2>
+            <p className="text-[13px] text-muted">The main routes this app uses. When authentication is enabled on the server, every route needs a signed-in session or API key.</p>
           </div>
         </div>
-
-        {/* Database */}
-        <div className="glass-card p-4 space-y-2 relative overflow-hidden group">
-          <div className="flex items-center justify-between">
-            <div className="w-7 h-7 rounded-md bg-white/5 border border-white/10 flex items-center justify-center">
-              <Database className="h-4 w-4 text-indigo-400" />
-            </div>
-            {health?.services?.database === "healthy" ? (
-              <Badge className="bg-emerald-500/10 text-emerald-300 border-emerald-500/30 text-[10px] font-mono">
-                Cluster Ready
-              </Badge>
-            ) : health?.services?.database === "fallback" ? (
-              <Badge className="bg-amber-500/10 text-amber-300 border-amber-500/30 text-[10px] font-mono">
-                In-memory
-              </Badge>
-            ) : health ? (
-              <Badge className="bg-rose-500/10 text-rose-300 border-rose-500/30 text-[10px] font-mono">
-                Degraded
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-[10px] font-mono">Checking...</Badge>
-            )}
-          </div>
-          <div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">MongoDB Atlas</div>
-            <div className="text-xs font-semibold text-white mt-0.5">
-              {health?.services?.database === "healthy" ? "Primary Connected" : "Local Fallback"}
-            </div>
-          </div>
-        </div>
-
-        {/* LLM Provider */}
-        <div className="glass-card p-4 space-y-2 relative overflow-hidden group">
-          <div className="flex items-center justify-between">
-            <div className="w-7 h-7 rounded-md bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-              <Bot className="h-4 w-4 text-amber-400" />
-            </div>
-            <Badge className="bg-amber-500/10 text-amber-300 border-amber-500/30 text-[10px] font-mono">
-              {llmHealth?.status === "ready" ? "Active" : "Ready"}
-            </Badge>
-          </div>
-          <div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">LLM Provider</div>
-            <div className="text-xs font-semibold text-white mt-0.5 truncate">
-              {llmHealth?.model ?? (llmHealth?.provider ? `${llmHealth.provider}` : "Configured")}
-            </div>
-          </div>
-        </div>
-
-        {/* BM25 Hybrid Retrieval */}
-        <div className="glass-card p-4 space-y-2 relative overflow-hidden group">
-          <div className="flex items-center justify-between">
-            <div className="w-7 h-7 rounded-md bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
-              <Layers className="h-4 w-4 text-cyan-400" />
-            </div>
-            <Badge className="bg-cyan-500/10 text-cyan-300 border-cyan-500/30 text-[10px] font-mono">
-              Hybrid RAG
-            </Badge>
-          </div>
-          <div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Dual Retrieval</div>
-            <div className="text-xs font-semibold text-white mt-0.5">
-              BM25 + Dense MiniLM
-            </div>
-          </div>
-        </div>
-
-        {/* NLI Verifier */}
-        <div className="glass-card p-4 space-y-2 relative overflow-hidden group">
-          <div className="flex items-center justify-between">
-            <div className="w-7 h-7 rounded-md bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
-              <Cpu className="h-4 w-4 text-violet-400" />
-            </div>
-            <Badge className="bg-violet-500/10 text-violet-300 border-violet-500/30 text-[10px] font-mono">
-              Cross-Encoder
-            </Badge>
-          </div>
-          <div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">DeBERTa-v3</div>
-            <div className="text-xs font-semibold text-white mt-0.5">
-              NLI Calibrated
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Truth-in-Advertising Guarantee Callout */}
-      <motion.div variants={{ hidden: { opacity: 0, scale: 0.98 }, show: { opacity: 1, scale: 1 } }} className="glass-card bg-amber-500/5 border border-amber-500/20 p-4.5 rounded-xl flex items-start gap-3">
-        <ShieldCheck className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />
-        <div className="space-y-1">
-          <div className="text-xs font-bold text-amber-300 font-mono uppercase tracking-wider">
-            Truth-in-Advertising Architectural Standard
-          </div>
-          <p className="text-xs text-amber-200/80 leading-relaxed">
-            VERIFIN 2.0 uses strictly verifiable signals: DeBERTa-v3 cross-encoder probabilities, deterministic mathematical recalculations, and exact fiscal period grounding. No claim predictions or confidence scores are fabricated or approximated by generative hallucinations.
-          </p>
-        </div>
-      </motion.div>
-
-      {/* Backend API Endpoints Catalog */}
-      <motion.div variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} className="glass-card overflow-hidden">
-        <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/[0.01]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-md bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-              <Code2 className="h-4 w-4 text-indigo-400" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-white">Registered FastAPI Endpoints</h2>
-              <p className="text-[11px] text-slate-400 font-mono">Specification compliant with OpenAPI 3.1 & Pydantic v2 schemas</p>
-            </div>
-          </div>
-          {health && (
-            <Badge variant="outline" className="text-emerald-300 border-emerald-400/30 bg-emerald-500/10 text-[10px] font-mono flex items-center gap-1">
-              <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Health Verified
-            </Badge>
-          )}
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-white/10 bg-white/[0.02] text-[10px] font-mono uppercase tracking-wider text-slate-400">
-                <th className="py-3 px-4 font-semibold w-24">Method</th>
-                <th className="py-3 px-4 font-semibold w-72">Path</th>
-                <th className="py-3 px-4 font-semibold">Purpose & Capability</th>
-                <th className="py-3 px-4 font-semibold text-right">Payload Specification</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5 font-mono">
-              {endpoints.map((e) => {
-                const isPost = e.method === "POST"
-                return (
-                  <tr key={e.path} className="hover:bg-white/[0.03] transition-colors">
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                        isPost
-                          ? "bg-amber-500/10 text-amber-300 border border-amber-400/30"
-                          : "bg-sky-500/10 text-sky-300 border border-sky-400/30"
-                      }`}>
-                        {e.method}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 font-semibold text-white">
-                      {e.path}
-                    </td>
-                    <td className="py-3.5 px-4 font-sans text-slate-300 text-xs">
-                      {e.desc}
-                    </td>
-                    <td className="py-3.5 px-4 text-right text-[11px] text-slate-500">
-                      {e.params}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
-    </motion.div>
+        <DataTable caption="API routes used by this app" columns={columns} rows={ENDPOINTS} rowKey={(e) => `${e.method}${e.path}`} />
+      </section>
+    </div>
   )
 }

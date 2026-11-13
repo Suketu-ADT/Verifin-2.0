@@ -1,68 +1,166 @@
-import { motion } from "framer-motion"
-import { useParams, Link } from "react-router-dom"
-import { useState, useEffect } from "react"
-import { Card, CardContent } from "../components/ui/card"
-import { Badge } from "../components/ui/badge"
-import { Button } from "../components/ui/button"
+import { useEffect, useMemo, useState } from "react"
+import { Link, useParams } from "react-router-dom"
+import { Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, Copy, Download, FileText, Printer, Search, ShieldCheck, Gauge, ListChecks } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardBody, CardHeader, DetailRow } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Segmented } from "@/components/ui/tabs"
+import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeading } from "@/components/shared/PageHeading"
+import { MetricCard } from "@/components/shared/MetricCard"
+import { DataTable, type Column } from "@/components/shared/DataTable"
+import { EmptyState, ErrorState, Notice } from "@/components/shared/states"
+import { VerdictDonut } from "@/components/charts/VerdictDonut"
+import { VerdictBar } from "@/components/charts/chartKit"
+import { ClaimCard } from "@/components/verification/ClaimCard"
+import { Collapse } from "@/components/ui/collapse"
+import { RiskIndicator, StatusBadge } from "@/components/verification/indicators"
+import { hasEvidence, retrievalLabel } from "@/components/verification/EvidencePanel"
+import { cn } from "@/lib/utils"
+import { formatDateTime, humanize, percent, plural } from "@/lib/format"
+import { RULES, ruleInfo } from "@/lib/rules"
+import { normalizeRisk, normalizeVerdict, VERDICT_ORDER, VERDICTS, type Verdict } from "@/lib/verdict"
+import { demoSessions } from "../lib/demoData"
 import {
-  CheckCircle2,
-  AlertTriangle,
-  HelpCircle,
-  ArrowLeft,
-  ChevronRight,
-  FileText,
-  Loader2,
-  Calculator,
-  Calendar,
-  Layers,
-  ShieldAlert,
-  Search,
-  Download,
-  Copy,
-  Check,
-  Sparkles,
-} from "lucide-react"
-import { demoSessions, claimCounts, type NLILabel } from "../lib/demoData"
-import { figureCheckLabel } from "../lib/figureCheck"
-import {
-  getVerificationResults,
-  getDocument,
   downloadReport,
   errorMessage,
-  type VerificationResultResponse,
+  getDocument,
+  getEngineConfig,
+  getVerificationResults,
+  type ClaimResponse,
   type DocumentResponse,
+  type EngineConfig,
+  type VerificationResultResponse,
 } from "../lib/api"
 
-const verdictMeta = (label: string | undefined) => {
-  const norm = (label || "").toUpperCase()
-  if (norm === "SUPPORTED" || norm === "ENTAILMENT") {
-    return { icon: CheckCircle2, text: "text-emerald-300", bg: "bg-emerald-500/10 border-emerald-400/30", label: "Supported" }
+type Filter = "ALL" | Verdict
+
+interface ResultView {
+  id: string
+  title: string
+  documentName: string
+  claims: ClaimResponse[]
+  overallScore: number
+  risk: string
+  status?: string
+  /** Sample run shipped with the app (lib/demoData.ts), not a stored verification. */
+  demo: boolean
+  llmOutput?: string
+  ranAt?: string
+}
+
+const RISK_RANK: Record<string, number> = { LOW: 1, MEDIUM: 2, HIGH: 3 }
+
+/** The shipped sample sessions use their own claim shape; this maps it onto the live one so one set of components renders both. */
+function fromDemo(id: string): ResultView | null {
+  const s = demoSessions.find((d) => d.id === id)
+  if (!s) return null
+  const claims = s.claims.map((c) => ({ ...c, status: c.nli?.label ?? "UNVERIFIABLE" })) as unknown as ClaimResponse[]
+  const supported = claims.filter((c) => normalizeVerdict(c.status) === "SUPPORTED").length
+  const risk = claims.reduce((worst, c) => ((RISK_RANK[normalizeRisk(c.risk_level)] ?? 0) > (RISK_RANK[worst] ?? 0) ? normalizeRisk(c.risk_level) : worst), "UNKNOWN")
+  return {
+    id: s.id, title: s.title, documentName: s.document, claims, demo: true, llmOutput: s.llm_output, ranAt: s.ran_at, risk,
+    overallScore: claims.length ? Math.round((supported / claims.length) * 100) : 0,
   }
-  if (norm === "CONTRADICTED" || norm === "CONTRADICTION") {
-    return { icon: AlertTriangle, text: "text-rose-300", bg: "bg-rose-500/10 border-rose-400/30", label: "Contradicted" }
+}
+
+function fromLive(r: VerificationResultResponse, doc: DocumentResponse | null): ResultView {
+  return {
+    id: r.id, title: "Verification results", documentName: doc?.filename ?? "Source document", claims: r.claims,
+    overallScore: r.overall_score, risk: r.risk_level, status: r.status, demo: false,
   }
-  return { icon: HelpCircle, text: "text-amber-300", bg: "bg-amber-500/10 border-amber-400/30", label: "Unverifiable" }
 }
 
 export default function ResultsDashboard() {
-  const { id } = useParams()
-  const demoSession = demoSessions.find((s) => s.id === id)
-
-  const [liveSession, setLiveSession] = useState<VerificationResultResponse | null>(null)
+  const { id = "" } = useParams()
+  const [live, setLive] = useState<VerificationResultResponse | null>(null)
   const [docMeta, setDocMeta] = useState<DocumentResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [activeFilter, setActiveFilter] = useState<"ALL" | "CONTRADICTED" | "SUPPORTED" | "UNVERIFIABLE">("ALL")
-  const [copiedId, setCopiedId] = useState(false)
+  const [reload, setReload] = useState(0)
+
+  const [filter, setFilter] = useState<Filter>("ALL")
+  const [query, setQuery] = useState("")
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set())
+  const [copied, setCopied] = useState(false)
   const [exporting, setExporting] = useState<"pdf" | "csv" | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [showTech, setShowTech] = useState(false)
+  const [engine, setEngine] = useState<EngineConfig | null>(null)
+
+  const demo = useMemo(() => fromDemo(id), [id])
+
+  useEffect(() => {
+    if (demo || !id) return
+    let cancelled = false
+    setLoading(true)
+    setLoadError(null)
+    getVerificationResults(id)
+      .then((res) => {
+        if (cancelled) return
+        setLive(res)
+        if (res.document_id) getDocument(res.document_id).then((d) => !cancelled && setDocMeta(d)).catch(() => {})
+      })
+      .catch((err) => {
+        if (cancelled) return
+        const detail = err?.response?.data?.detail || err?.message || `Session "${id}" was not found.`
+        setLoadError(typeof detail === "string" ? detail : JSON.stringify(detail))
+      })
+      .finally(() => !cancelled && setLoading(false))
+    return () => { cancelled = true }
+  }, [id, demo, reload])
+
+  // engine settings are only fetched when the reader opens Technical details
+  useEffect(() => {
+    if (showTech && !engine) getEngineConfig().then(setEngine).catch(() => {})
+  }, [showTech, engine])
+
+  const view: ResultView | null = demo ?? (live ? fromLive(live, docMeta) : null)
+
+  const stats = useMemo(() => {
+    const claims = view?.claims ?? []
+    const counts: Record<Verdict, number> = { SUPPORTED: 0, CONTRADICTED: 0, UNVERIFIABLE: 0 }
+    claims.forEach((c) => { counts[normalizeVerdict(c.status)]++ })
+    const confs = claims.map((c) => c.confidence).filter((x): x is number => typeof x === "number")
+    const rules = new Map<string, number>()
+    claims.forEach((c) => { if (c.decided_by) rules.set(c.decided_by, (rules.get(c.decided_by) ?? 0) + 1) })
+    const methods = [...new Set(claims.map((c) => c.evidence?.retrieval_method).filter((m): m is string => !!m))]
+    return { counts, total: claims.length, avgConfidence: confs.length ? confs.reduce((a, b) => a + b, 0) / confs.length : null, rules, methods }
+  }, [view])
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return (view?.claims ?? []).filter((c) => (filter === "ALL" || normalizeVerdict(c.status) === filter) && (!q || c.claim_text.toLowerCase().includes(q)))
+  }, [view, filter, query])
+
+  const toggle = (claimId: string) => setOpenIds((s) => { const n = new Set(s); if (n.has(claimId)) n.delete(claimId); else n.add(claimId); return n })
+  const allOpen = visible.length > 0 && visible.every((c) => openIds.has(c.id))
+  const setAll = (open: boolean) => setOpenIds(open ? new Set(visible.map((c) => c.id)) : new Set())
+
+  const jumpTo = (claimId: string) => {
+    setFilter("ALL")
+    setQuery("")
+    setOpenIds((s) => new Set(s).add(claimId))
+    window.setTimeout(() => document.getElementById(`claim-${claimId}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60)
+  }
+
+  const copyId = () => {
+    void navigator.clipboard?.writeText(id).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1800) })
+  }
+
+  const print = () => {
+    // every claim is shown in full on paper
+    setOpenIds(new Set((view?.claims ?? []).map((c) => c.id)))
+    window.setTimeout(() => window.print(), 250)
+  }
 
   const exportReport = async (format: "pdf" | "csv") => {
-    if (!liveSession) return
+    if (!live) return
     setExporting(format)
     setExportError(null)
     try {
-      await downloadReport(liveSession.id, format)
+      await downloadReport(live.id, format)
     } catch (err) {
       setExportError(errorMessage(err, "The report could not be downloaded."))
     } finally {
@@ -70,483 +168,262 @@ export default function ResultsDashboard() {
     }
   }
 
-  useEffect(() => {
-    if (demoSession || !id) return
-    setLoading(true)
-    setLoadError(null)
-    getVerificationResults(id)
-      .then((res) => {
-        setLiveSession(res)
-        setLoading(false)
-        if (res.document_id) {
-          getDocument(res.document_id)
-            .then(setDocMeta)
-            .catch(() => {})
-        }
-      })
-      .catch((err) => {
-        const detail = err?.response?.data?.detail || err?.message || `Session "${id}" was not found.`
-        setLoadError(typeof detail === "string" ? detail : JSON.stringify(detail))
-        setLoading(false)
-      })
-  }, [id, demoSession])
-
-  const copySessionId = () => {
-    if (!id) return
-    navigator.clipboard.writeText(id)
-    setCopiedId(true)
-    setTimeout(() => setCopiedId(false), 2000)
-  }
-
-  // 1. Loading state for live query
-  if (loading) {
+  if (loading || (!view && !loadError)) {
     return (
-      <div className="max-w-2xl mx-auto text-center py-24 space-y-4">
-        <div className="h-12 w-12 rounded-2xl bg-amber-500/10 border border-amber-400/20 flex items-center justify-center mx-auto">
-          <Loader2 className="h-6 w-6 text-amber-400 animate-spin" />
-        </div>
-        <h1 className="text-lg font-bold text-white">Retrieving Verification Audit...</h1>
-        <p className="text-xs text-slate-400 font-mono">Querying MongoDB Atlas for session {id}</p>
+      <div className="space-y-6" role="status" aria-label="Loading verification results">
+        <Skeleton className="h-9 w-72" />
+        <Skeleton className="h-40 w-full" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-28" />)}</div>
+        <Skeleton className="h-64 w-full" />
       </div>
     )
   }
-
-  // 2. Demo Session mode (canned dataset preserved)
-  if (demoSession) {
-    const counts = claimCounts(demoSession.claims)
-    const overallScore = Math.round((counts.supported / counts.total) * 100)
-    const filteredClaims = demoSession.claims.filter((c) => {
-      if (activeFilter === "ALL") return true
-      if (activeFilter === "CONTRADICTED") return c.nli?.label === "CONTRADICTED"
-      if (activeFilter === "SUPPORTED") return c.nli?.label === "SUPPORTED"
-      return c.nli?.label === "UNVERIFIABLE"
-    })
-
-    return (
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: "easeOut" }} className="space-y-6">
-        {/* Header Breadcrumbs & Quick Actions */}
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-          <div>
-            <Link to="/verify" className="inline-flex items-center text-xs font-semibold text-slate-400 hover:text-white mb-2">
-              <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back to Verification Launchpad
-            </Link>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl font-extrabold tracking-tight text-white">{demoSession.title}</h1>
-              <Badge variant="outline" className="text-amber-300 border-amber-400/30 bg-amber-500/10 font-mono text-[10px]">
-                Demo Dataset
-              </Badge>
-              <Badge variant="outline" className="text-indigo-300 border-indigo-400/30 bg-indigo-500/10 font-mono text-[10px]">
-                BM25 Hybrid RAG
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 font-mono">
-              <FileText className="h-3.5 w-3.5 text-slate-400" />
-              <span>{demoSession.document}</span>
-              <span>·</span>
-              <span>{demoSession.claims.length} claims audited</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link to="/evidence">
-              <Button variant="outline" size="sm" className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
-                <Search className="h-3.5 w-3.5 text-indigo-400" /> Inspect Evidence Corpus
-              </Button>
-            </Link>
-            <Button variant="outline" size="sm" onClick={() => window.print()} className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
-              <Download className="h-3.5 w-3.5" /> Print Audit
-            </Button>
-          </div>
-        </div>
-
-        {/* LLM answer panel */}
-        <div className="glass-card rounded-2xl p-5 border border-white/10 space-y-2 relative overflow-hidden">
-          <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            <span className="flex items-center gap-1.5 text-amber-300">
-              <Sparkles className="h-3 w-3" /> LLM-Generated Financial Synthesis Under Review
-            </span>
-            <span className="font-mono text-slate-400">Prompt Target: FY2025 Performance</span>
-          </div>
-          <p className="text-sm font-medium text-slate-200 leading-relaxed bg-black/30 p-4 rounded-xl border border-white/5">
-            "{demoSession.llm_output}"
-          </p>
-        </div>
-
-        {/* 4 Metric Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="glass-card rounded-2xl p-4 border border-white/10">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Claims Audited</div>
-            <div className="text-2xl font-bold text-white font-mono">{counts.total}</div>
-            <div className="text-[11px] text-slate-400 mt-1">100% evaluated</div>
-          </div>
-          <div className="glass-card rounded-2xl p-4 border border-emerald-400/30">
-            <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1">Supported Facts</div>
-            <div className="text-2xl font-bold text-emerald-400 font-mono">{counts.supported}</div>
-            <div className="text-[11px] text-emerald-400/80 mt-1 font-mono">{overallScore}% support rate</div>
-          </div>
-          <div className="glass-card rounded-2xl p-4 border border-rose-400/30">
-            <div className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1">Hallucinations</div>
-            <div className="text-2xl font-bold text-rose-400 font-mono">{counts.contradicted}</div>
-            <div className="text-[11px] text-rose-400/80 mt-1 font-mono">{Math.round((counts.contradicted / counts.total) * 100)}% contradiction rate</div>
-          </div>
-          <div className="glass-card rounded-2xl p-4 border border-amber-400/30">
-            <div className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-1">Unverifiable</div>
-            <div className="text-2xl font-bold text-amber-400 font-mono">{counts.unverifiable}</div>
-            <div className="text-[11px] text-amber-400/80 mt-1 font-mono">Missing evidence</div>
-          </div>
-        </div>
-
-        {/* Support Rate Progress Banner */}
-        <div className="glass-card rounded-2xl p-4 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-white">Overall Factual Support Rate</span>
-              <span className="text-xs font-mono font-bold text-emerald-400">{overallScore}%</span>
-            </div>
-            <p className="text-xs text-slate-400">
-              Proportion of model assertions backed by SEC 10-K document evidence.
-            </p>
-          </div>
-          <div className="w-full sm:w-64 h-2.5 bg-black/40 rounded-full overflow-hidden flex border border-white/5">
-            <div className="h-full bg-emerald-400" style={{ width: `${overallScore}%` }} />
-            <div className="h-full bg-rose-500" style={{ width: `${Math.round((counts.contradicted / counts.total) * 100)}%` }} />
-            <div className="h-full bg-amber-400" style={{ width: `${Math.round((counts.unverifiable / counts.total) * 100)}%` }} />
-          </div>
-        </div>
-
-        {/* Claim-by-Claim Section with Filter Buttons */}
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-            <div>
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Claim-by-Claim Verification Graph</h2>
-              <p className="text-xs text-slate-400">Select any claim to inspect NLI probabilities and exact PDF coordinates</p>
-            </div>
-
-            <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10 text-xs">
-              {(["ALL", "CONTRADICTED", "SUPPORTED", "UNVERIFIABLE"] as const).map((filter) => (
-                <button
-                  key={filter}
-                  onClick={() => setActiveFilter(filter)}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition-all text-[11px] ${
-                    activeFilter === filter
-                      ? "bg-amber-400 text-neutral-950 shadow"
-                      : "text-slate-400 hover:text-white hover:bg-white/5"
-                  }`}
-                >
-                  {filter === "ALL" ? `All (${demoSession.claims.length})` : filter === "CONTRADICTED" ? `Contradicted (${counts.contradicted})` : filter === "SUPPORTED" ? `Supported (${counts.supported})` : `Unverified (${counts.unverifiable})`}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <motion.div variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} initial="hidden" animate="show" className="space-y-3">
-            {filteredClaims.map((c, i) => {
-              const meta = verdictMeta(c.nli?.label)
-              return (
-                <Link key={c.id} to={`/verify/results/${demoSession.id}/claim/${c.id}`} className="block group">
-                  <motion.div variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }} whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }} transition={{ duration: 0.15 }}>
-                    <div className={`glass-card rounded-2xl p-4 border transition-all ${meta.bg}`}>
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="text-xs font-mono font-bold text-slate-400 shrink-0">{String(i + 1).padStart(2, "0")}</span>
-                          <meta.icon className={`h-4 w-4 shrink-0 ${meta.text}`} />
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-white truncate group-hover:text-amber-200 transition-colors">
-                              {c.claim_text}
-                            </p>
-                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                              {c.evidence && c.evidence.page_number > 0 && (
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-slate-300">
-                                  Page {c.evidence.page_number}
-                                </span>
-                              )}
-                              {c.evidence?.retrieval_method && (
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-indigo-400/30 text-indigo-300 bg-indigo-500/10">
-                                  {c.evidence.retrieval_method === "hybrid" ? "Hybrid RAG" : c.evidence.retrieval_method}
-                                </span>
-                              )}
-                              {c.hallucination_type && c.hallucination_type !== "NONE" && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border border-rose-400/30 text-rose-300 bg-rose-500/10">
-                                  <ShieldAlert className="h-2.5 w-2.5" />
-                                  {c.hallucination_type.replace(/_/g, " ")}
-                                </span>
-                              )}
-                              {c.numerical_finding && c.numerical_finding.comparison_outcome !== "NO_CALCULATION" && (
-                                <span className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${
-                                  c.numerical_finding.comparison_outcome === "VALIDATED" ? "text-emerald-300 border-emerald-400/30 bg-emerald-500/10" : "text-rose-300 border-rose-400/30 bg-rose-500/10"
-                                }`}>
-                                  <Calculator className="h-2.5 w-2.5" />
-                                  Figure check: {figureCheckLabel(c.numerical_finding.comparison_outcome)}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3 shrink-0">
-                          <span className={`text-xs font-bold uppercase tracking-wider font-mono ${meta.text}`}>{meta.label}</span>
-                          <ChevronRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                </Link>
-              )
-            })}
-          </motion.div>
-        </div>
-      </motion.div>
-    )
+  if (loadError || !view) {
+    return <ErrorState title="These results could not be loaded" message={loadError ?? "The verification was not found."} onRetry={() => setReload((n) => n + 1)} />
   }
 
-  // 3. Live Session mode (from real MongoDB Atlas session)
-  if (liveSession) {
-    const totalClaims = liveSession.claims.length
-    const supportedCount = liveSession.claims.filter(
-      (c) => c.status === "SUPPORTED" || c.status === "ENTAILMENT"
-    ).length
-    const contradictedCount = liveSession.claims.filter(
-      (c) => c.status === "CONTRADICTED" || c.status === "CONTRADICTION"
-    ).length
-    const unverifiableCount = totalClaims - (supportedCount + contradictedCount)
-    const docDisplayName = docMeta?.filename || `Document: ${liveSession.document_id}`
+  const { counts, total } = stats
+  const headline =
+    total === 0 ? { v: "UNVERIFIABLE" as Verdict, text: "No claims were found in this response." }
+    : counts.CONTRADICTED > 0 ? { v: "CONTRADICTED" as Verdict, text: `${plural(counts.CONTRADICTED, "claim")} of ${total} contradict the document.` }
+    : counts.UNVERIFIABLE > 0 ? { v: "UNVERIFIABLE" as Verdict, text: `No contradictions, but ${plural(counts.UNVERIFIABLE, "claim")} could not be verified.` }
+    : { v: "SUPPORTED" as Verdict, text: `All ${total} claims are supported by the document.` }
+  const H = VERDICTS[headline.v]
 
-    const filteredClaims = liveSession.claims.filter((c) => {
-      const norm = (c.status || "").toUpperCase()
-      if (activeFilter === "ALL") return true
-      if (activeFilter === "CONTRADICTED") return norm === "CONTRADICTED" || norm === "CONTRADICTION"
-      if (activeFilter === "SUPPORTED") return norm === "SUPPORTED" || norm === "ENTAILMENT"
-      return norm !== "CONTRADICTED" && norm !== "CONTRADICTION" && norm !== "SUPPORTED" && norm !== "ENTAILMENT"
-    })
+  const evidenceRows = view.claims.map((c, i) => ({ c, i }))
+  const evidenceColumns: Column<{ c: ClaimResponse; i: number }>[] = [
+    { key: "n", header: "#", cell: ({ i }) => String(i + 1).padStart(2, "0"), numeric: true, sortValue: ({ i }) => i, className: "w-12" },
+    { key: "claim", header: "Claim", cell: ({ c }) => <span className="line-clamp-2 min-w-48 max-w-md text-ink">{c.claim_text}</span> },
+    { key: "verdict", header: "Verdict", cell: ({ c }) => <StatusBadge status={c.status} size="sm" />, sortValue: ({ c }) => normalizeVerdict(c.status) },
+    { key: "page", header: "Page", cell: ({ c }) => (hasEvidence(c.evidence) ? c.evidence.page_number : "None"), numeric: true, sortValue: ({ c }) => (hasEvidence(c.evidence) ? c.evidence.page_number : 0), hideBelow: "sm" },
+    { key: "method", header: "Search", cell: ({ c }) => (c.evidence?.retrieval_method ? <span className="whitespace-nowrap">{retrievalLabel(c.evidence.retrieval_method)}</span> : "Not recorded"), hideBelow: "xl" },
+    { key: "score", header: "Match score", cell: ({ c }) => (hasEvidence(c.evidence) ? percent(c.evidence.similarity_score, 0) : "None"), numeric: true, align: "right", sortValue: ({ c }) => (hasEvidence(c.evidence) ? c.evidence.similarity_score : -1), hideBelow: "md" },
+    { key: "rule", header: "Decided by", cell: ({ c }) => ruleInfo(c.decided_by)?.label ?? "Not recorded", hideBelow: "md" },
+  ]
 
-    return (
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: "easeOut" }} className="space-y-6">
-        {/* Header Breadcrumbs & Quick Actions */}
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-          <div>
-            <Link to="/verify" className="inline-flex items-center text-xs font-semibold text-slate-400 hover:text-white mb-2">
-              <ArrowLeft className="h-3.5 w-3.5 mr-1" /> New Verification
-            </Link>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl font-extrabold tracking-tight text-white">Live Verification Results</h1>
-              <Badge variant="outline" className="text-emerald-400 border-emerald-400/30 bg-emerald-500/10 font-mono text-[10px]">
-                Live Session
-              </Badge>
-              <Badge variant="outline" className="text-indigo-300 border-indigo-400/30 bg-indigo-500/10 font-mono text-[10px]">
-                BM25 Hybrid RAG
-              </Badge>
-              <Badge variant="outline" className="text-amber-300 border-amber-400/30 bg-amber-500/10 font-mono text-[10px]">
-                Risk: {liveSession.risk_level}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-mono">
-              <span className="flex items-center gap-1">
-                <FileText className="h-3.5 w-3.5 text-slate-400" />
-                {docDisplayName}
-              </span>
-              <span>·</span>
-              <button onClick={copySessionId} className="hover:text-white flex items-center gap-1">
-                <span>Session: {liveSession.id.slice(0, 8)}...</span>
-                {copiedId ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+  return (
+    <div className="space-y-8">
+      <PageHeading
+        back={{ to: demo ? "/verify" : "/history", label: demo ? "New verification" : "Verification history" }}
+        title={view.title}
+        subtitle={view.demo ? "A sample verification shipped with the app, shown so the features can be explored without uploading a document. It is not a stored run." : "Every claim in the response, tested against the source document and explained."}
+        actions={
+          <>
+            <Link to={view.demo ? "/evidence" : `/evidence?session=${view.id}`}><Button size="sm"><Search /> Evidence</Button></Link>
+            <Button size="sm" onClick={print}><Printer /> Print</Button>
+            {!view.demo && (
+              <>
+                <Button size="sm" loading={exporting === "pdf"} disabled={exporting !== null} onClick={() => void exportReport("pdf")}><Download /> PDF report</Button>
+                <Button size="sm" loading={exporting === "csv"} disabled={exporting !== null} onClick={() => void exportReport("csv")}><Download /> CSV</Button>
+              </>
+            )}
+          </>
+        }
+        meta={
+          <>
+            <span className="inline-flex items-center gap-1.5"><FileText className="size-3.5" aria-hidden="true" />{view.documentName}</span>
+            <span>{plural(total, "claim")}</span>
+            {view.ranAt && <span>{formatDateTime(view.ranAt)}</span>}
+            {view.demo && <Badge tone="warning">Sample data</Badge>}
+            {!view.demo && (
+              <button type="button" onClick={copyId} className="no-print inline-flex items-center gap-1.5 rounded-md hover:text-ink" aria-label="Copy session ID">
+                <span className="num">ID {view.id.slice(0, 8)}…</span>
+                {copied ? <Check className="size-3.5 text-supported" /> : <Copy className="size-3.5" />}
               </button>
-            </div>
-          </div>
+            )}
+          </>
+        }
+      />
+      {exportError && <Notice tone="error" title="Download failed">{exportError}</Notice>}
 
-          <div className="flex items-center gap-2">
-            <Link to={`/evidence?session=${liveSession.id}`}>
-              <Button variant="outline" size="sm" className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
-                <Search className="h-3.5 w-3.5 text-indigo-400" /> Inspect Evidence
-              </Button>
-            </Link>
-            <Button variant="outline" size="sm" onClick={() => window.print()} className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
-              <Download className="h-3.5 w-3.5" /> Print Audit
-            </Button>
-            <Button variant="outline" size="sm" disabled={exporting !== null} onClick={() => exportReport("pdf")} className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
-              <Download className="h-3.5 w-3.5 text-amber-400" /> {exporting === "pdf" ? "Preparing…" : "PDF report"}
-            </Button>
-            <Button variant="outline" size="sm" disabled={exporting !== null} onClick={() => exportReport("csv")} className="h-9 text-xs border-white/10 hover:bg-white/10 gap-1.5">
-              <Download className="h-3.5 w-3.5 text-amber-400" /> {exporting === "csv" ? "Preparing…" : "CSV"}
-            </Button>
-            {exportError && <span role="alert" className="text-xs text-rose-400">{exportError}</span>}
-          </div>
-        </div>
-
-        {/* Metric Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="glass-card rounded-2xl p-4 border border-white/10">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Claims Audited</div>
-            <div className="text-2xl font-bold text-white font-mono">{totalClaims}</div>
-            <div className="text-[11px] text-slate-400 mt-1">Status: {liveSession.status}</div>
-          </div>
-          <div className="glass-card rounded-2xl p-4 border border-emerald-400/30">
-            <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1">Supported Facts</div>
-            <div className="text-2xl font-bold text-emerald-400 font-mono">{supportedCount}</div>
-            <div className="text-[11px] text-emerald-400/80 mt-1 font-mono">{liveSession.overall_score}% verified</div>
-          </div>
-          <div className="glass-card rounded-2xl p-4 border border-rose-400/30">
-            <div className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1">Hallucinations</div>
-            <div className="text-2xl font-bold text-rose-400 font-mono">{contradictedCount}</div>
-            <div className="text-[11px] text-rose-400/80 mt-1 font-mono">{totalClaims > 0 ? Math.round((contradictedCount / totalClaims) * 100) : 0}% contradiction</div>
-          </div>
-          <div className="glass-card rounded-2xl p-4 border border-amber-400/30">
-            <div className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-1">Unverifiable</div>
-            <div className="text-2xl font-bold text-amber-400 font-mono">{unverifiableCount}</div>
-            <div className="text-[11px] text-amber-400/80 mt-1 font-mono">Missing evidence</div>
-          </div>
-        </div>
-
-        {/* Overall Score Progress Banner */}
-        <div className="glass-card rounded-2xl p-4 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-white">Overall Factual Support Rate</span>
-              <span className="text-xs font-mono font-bold text-emerald-400">{liveSession.overall_score}%</span>
-            </div>
-            <p className="text-xs text-slate-400">
-              Computed ratio of supported statements grounded in the uploaded document.
+      {/* Overview */}
+      <section aria-labelledby="overview" className="space-y-4">
+        <h2 id="overview" className="text-lg font-semibold tracking-tight text-ink">Overview</h2>
+        <div className={cn("flex flex-wrap items-center gap-4 rounded-lg border p-4", H.tint, H.border)}>
+          <span className={cn("grid size-10 shrink-0 place-items-center rounded-lg bg-surface", H.text)}><H.Icon className="size-5" aria-hidden="true" /></span>
+          <div className="min-w-0 flex-1">
+            <div className={cn("text-[15px] font-semibold", H.text)}>{headline.text}</div>
+            <p className="mt-0.5 text-[13px] text-ink/80">
+              Summarised from the verdicts below. {counts.SUPPORTED > 0 && <>{plural(counts.SUPPORTED, "claim")} supported. </>}
+              Each verdict names the rule that decided it, so nothing here is an unexplained score.
             </p>
           </div>
-          <div className="w-full sm:w-64 h-2.5 bg-black/40 rounded-full overflow-hidden flex border border-white/5">
-            <div className="h-full bg-emerald-400" style={{ width: `${liveSession.overall_score}%` }} />
-            <div className="h-full bg-rose-500" style={{ width: `${totalClaims > 0 ? Math.round((contradictedCount / totalClaims) * 100) : 0}%` }} />
-            <div className="h-full bg-amber-400" style={{ width: `${totalClaims > 0 ? Math.round((unverifiableCount / totalClaims) * 100) : 0}%` }} />
-          </div>
+          <VerdictBar supported={counts.SUPPORTED} contradicted={counts.CONTRADICTED} unverifiable={counts.UNVERIFIABLE} className="w-full sm:w-64" />
         </div>
 
-        {/* Claim-by-Claim Section */}
-        {totalClaims > 0 ? (
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-              <div>
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Claim-by-Claim Verification Graph</h2>
-                <p className="text-xs text-slate-400">Select any claim to view natural language inference scores and evidence coordinates</p>
-              </div>
+        <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricCard label="Support score" icon={ShieldCheck} value={`${Math.round(view.overallScore)}%`} hint="Claims supported with no hallucination flag" />
+          <Card className="p-4">
+            <div className="text-[13px] font-medium text-muted">Overall risk</div>
+            <div className="mt-2.5"><RiskIndicator level={view.risk} size="lg" /></div>
+            <div className="mt-2 text-xs text-muted">The highest risk among the claims</div>
+          </Card>
+          <MetricCard label="Average confidence" icon={Gauge} value={stats.avgConfidence != null ? percent(stats.avgConfidence, 0) : "Unavailable"} hint="Mean of per-claim confidence (derived)" />
+          <MetricCard label="Claims checked" icon={ListChecks} value={total} hint={view.status ? `Run status: ${humanize(view.status)}` : "All evaluated"} />
+        </div>
 
-              <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10 text-xs">
-                {(["ALL", "CONTRADICTED", "SUPPORTED", "UNVERIFIABLE"] as const).map((filter) => (
-                  <button
-                    key={filter}
-                    onClick={() => setActiveFilter(filter)}
-                    className={`px-2.5 py-1 rounded-lg font-semibold transition-all text-[11px] ${
-                      activeFilter === filter
-                        ? "bg-amber-400 text-neutral-950 shadow"
-                        : "text-slate-400 hover:text-white hover:bg-white/5"
-                    }`}
-                  >
-                    {filter === "ALL" ? `All (${totalClaims})` : filter === "CONTRADICTED" ? `Contradicted (${contradictedCount})` : filter === "SUPPORTED" ? `Supported (${supportedCount})` : `Unverified (${unverifiableCount})`}
-                  </button>
-                ))}
-              </div>
-            </div>
+        {view.llmOutput && (
+          <Card>
+            <CardHeader title="Response under review" description="The AI-written text this sample verification checked." />
+            <CardBody><p className="text-[15px] leading-relaxed text-ink">“{view.llmOutput}”</p></CardBody>
+          </Card>
+        )}
+      </section>
 
-            <motion.div variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} initial="hidden" animate="show" className="space-y-3">
-              {filteredClaims.map((c, i) => {
-                const meta = verdictMeta(c.status)
+      {/* Claim classification */}
+      <section aria-labelledby="classification" className="space-y-4">
+        <h2 id="classification" className="text-lg font-semibold tracking-tight text-ink">Claim classification</h2>
+        <div className="stagger grid gap-4 lg:grid-cols-5">
+          <Card className="p-5 lg:col-span-3">
+            <h3 className="mb-4 text-[15px] font-semibold text-ink">Claims by verdict</h3>
+            <VerdictDonut counts={counts} />
+          </Card>
+          <Card className="p-5 lg:col-span-2">
+            <h3 className="text-[15px] font-semibold text-ink">What the verdicts mean</h3>
+            <dl className="mt-3 space-y-3">
+              {VERDICT_ORDER.map((k) => {
+                const v = VERDICTS[k]
                 return (
-                  <Link key={c.id} to={`/verify/results/${liveSession.id}/claim/${c.id}`} className="block group">
-                    <motion.div variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }} whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }} transition={{ duration: 0.15 }}>
-                      <div className={`glass-card rounded-2xl p-4 border transition-all ${meta.bg}`}>
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-xs font-mono font-bold text-slate-400 shrink-0">{String(i + 1).padStart(2, "0")}</span>
-                            <meta.icon className={`h-4 w-4 shrink-0 ${meta.text}`} />
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-white truncate group-hover:text-amber-200 transition-colors">
-                                {c.claim_text}
-                              </p>
-                              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                {c.evidence && c.evidence.page_number > 0 && (
-                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-slate-300">
-                                    Page {c.evidence.page_number}
-                                  </span>
-                                )}
-                                {c.evidence?.retrieval_method && (
-                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-indigo-400/30 text-indigo-300 bg-indigo-500/10">
-                                    {c.evidence.retrieval_method === "hybrid" ? "Hybrid RAG" : c.evidence.retrieval_method}
-                                  </span>
-                                )}
-                                {c.hallucination_type && c.hallucination_type !== "NONE" && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border border-rose-400/30 text-rose-300 bg-rose-500/10">
-                                    <ShieldAlert className="h-2.5 w-2.5" />
-                                    {c.hallucination_type.replace(/_/g, " ")}
-                                  </span>
-                                )}
-                                {c.numerical_finding && c.numerical_finding.comparison_outcome !== "NO_CALCULATION" && (
-                                  <span
-                                    className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${
-                                      c.numerical_finding.comparison_outcome === "VALIDATED"
-                                        ? "text-emerald-300 border-emerald-400/30 bg-emerald-500/10"
-                                        : "text-rose-300 border-rose-400/30 bg-rose-500/10"
-                                    }`}
-                                  >
-                                    <Calculator className="h-2.5 w-2.5" />
-                                    Figure check: {figureCheckLabel(c.numerical_finding.comparison_outcome)}
-                                  </span>
-                                )}
-                                {c.temporal_anchor && c.temporal_anchor.period_match !== "UNSPECIFIED" && (
-                                  <span
-                                    className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${
-                                      c.temporal_anchor.period_match === "ALIGNED"
-                                        ? "text-emerald-300 border-emerald-400/30 bg-emerald-500/10"
-                                        : c.temporal_anchor.period_match === "MISALIGNED"
-                                        ? "text-rose-300 border-rose-400/30 bg-rose-500/10"
-                                        : "text-amber-300 border-amber-400/30 bg-amber-500/10"
-                                    }`}
-                                  >
-                                    <Calendar className="h-2.5 w-2.5" />
-                                    {c.temporal_anchor.period_match}
-                                  </span>
-                                )}
-                                {c.multi_hop_finding && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border border-cyan-400/30 text-cyan-300 bg-cyan-500/10">
-                                    <Layers className="h-2.5 w-2.5" />
-                                    Multi-Hop
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 shrink-0">
-                            <span className={`text-xs font-bold uppercase tracking-wider font-mono ${meta.text}`}>{meta.label}</span>
-                            <ChevronRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  </Link>
+                  <div key={k} className="flex gap-3">
+                    <span className={cn("mt-0.5 grid size-6 shrink-0 place-items-center rounded-md border", v.tint, v.border, v.text)}><v.Icon className="size-3.5" aria-hidden="true" /></span>
+                    <div>
+                      <dt className="text-[13px] font-medium text-ink">{v.label} <span className="num font-normal text-muted">· {counts[k]}</span></dt>
+                      <dd className="text-xs leading-relaxed text-muted">{v.meaning}</dd>
+                    </div>
+                  </div>
                 )
               })}
-            </motion.div>
+            </dl>
+          </Card>
+        </div>
+      </section>
+
+      {/* Claim-by-claim */}
+      <section aria-labelledby="claims" className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 id="claims" className="text-lg font-semibold tracking-tight text-ink">Claim-by-claim analysis</h2>
+            <p className="text-[13px] text-muted">Open a claim to see why it got its verdict and the evidence it was checked against.</p>
           </div>
+          <Button size="sm" className="no-print" onClick={() => setAll(!allOpen)} disabled={visible.length === 0}>
+            {allOpen ? <ChevronsDownUp /> : <ChevronsUpDown />} {allOpen ? "Collapse all" : "Expand all"}
+          </Button>
+        </div>
+
+        <div className="no-print flex flex-wrap items-center gap-3">
+          <Segmented<Filter>
+            label="Filter by verdict"
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: "ALL", label: "All", count: total },
+              ...VERDICT_ORDER.map((k) => ({ value: k as Filter, label: VERDICTS[k].label, count: counts[k] })),
+            ]}
+          />
+          <div className="relative min-w-52 flex-1 sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+            <Input aria-label="Search claims" placeholder="Search claim text" value={query} onChange={(e) => setQuery(e.target.value)} className="h-9 pl-9" />
+          </div>
+        </div>
+
+        {visible.length === 0 ? (
+          <EmptyState title="No claims match" message="Try a different verdict filter or clear the search." actionLabel="Clear filters" onAction={() => { setFilter("ALL"); setQuery("") }} />
         ) : (
-          <div className="glass-card rounded-2xl p-8 text-center space-y-2 border border-white/10">
-            <p className="text-sm text-slate-300 font-semibold">No discrete financial claims identified</p>
-            <p className="text-xs text-slate-400">The provided text did not yield extractable factual claims.</p>
+          <div className="stagger space-y-3">
+            {visible.map((c) => (
+              <ClaimCard
+                key={c.id}
+                claim={c}
+                index={view.claims.indexOf(c)}
+                sessionId={view.id}
+                documentName={view.documentName}
+                open={openIds.has(c.id)}
+                onToggle={() => toggle(c.id)}
+              />
+            ))}
           </div>
         )}
+      </section>
 
-        <div className="flex justify-end gap-3 pt-4">
-          <Link to="/verify">
-            <Button variant="outline" className="border-white/15 hover:bg-white/10">Upload Another Document</Button>
-          </Link>
+      {/* Evidence analysis */}
+      <section aria-labelledby="evidence" className="space-y-4">
+        <div>
+          <h2 id="evidence" className="text-lg font-semibold tracking-tight text-ink">Evidence analysis</h2>
+          <p className="text-[13px] text-muted">Where each claim was checked in the document, and how closely the passage matched. Select a row to jump to the claim.</p>
         </div>
-      </motion.div>
-    )
-  }
+        <DataTable
+          caption="Evidence found for each claim"
+          columns={evidenceColumns}
+          rows={evidenceRows}
+          rowKey={({ c }) => c.id}
+          onRowClick={({ c }) => jumpTo(c.id)}
+          empty="No claims to show."
+        />
+        <p className="text-xs text-muted">
+          Match score is the retrieval similarity of the passage, not a probability that the claim is true.
+          {stats.methods.length > 0 && <> Search used: {stats.methods.map(retrievalLabel).join(", ")}.</>}
+        </p>
+      </section>
 
-  // 4. Session not found
-  return (
-    <div className="max-w-2xl mx-auto text-center py-20 space-y-4">
-      <div className="h-12 w-12 rounded-2xl bg-rose-500/10 border border-rose-400/20 flex items-center justify-center mx-auto text-rose-400">
-        <AlertTriangle className="h-6 w-6" />
-      </div>
-      <h1 className="text-xl font-bold text-white mb-2">Verification Session Not Found</h1>
-      <p className="text-sm text-slate-400 mb-6 max-w-md mx-auto">
-        {loadError || `Session "${id}" does not exist in MongoDB Atlas or demo datasets.`}
-      </p>
-      <Link to="/verify"><Button>Start a New Verification</Button></Link>
+      {/* Technical details */}
+      <section aria-labelledby="technical">
+        <button
+          type="button"
+          onClick={() => setShowTech((s) => !s)}
+          aria-expanded={showTech}
+          aria-controls="technical-body"
+          className="no-print flex w-full items-center justify-between gap-3 rounded-lg border border-line bg-surface px-5 py-4 text-left shadow-xs transition-colors duration-[var(--motion-fast)] hover:bg-canvas"
+        >
+          <span>
+            <span id="technical" className="block text-lg font-semibold tracking-tight text-ink">Technical details</span>
+            <span className="block text-[13px] text-muted">Which rules decided the verdicts, and the engine settings. For auditors and engineers.</span>
+          </span>
+          <ChevronDown className={cn("size-5 shrink-0 text-muted transition-transform duration-[var(--motion-base)] ease-[var(--ease-out-soft)]", showTech && "rotate-180")} aria-hidden="true" />
+        </button>
+
+        <Collapse open={showTech} id="technical-body">
+          <div className="grid gap-4 pt-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader title="Decided by" description="Rules run in a fixed priority order; the first that applies decides the verdict." />
+              <CardBody className="space-y-3">
+                {stats.rules.size === 0 ? (
+                  <p className="text-[13px] text-muted">The deciding rule was not recorded for these claims.</p>
+                ) : (
+                  Object.entries(RULES).sort(([, a], [, b]) => a.priority - b.priority).filter(([k]) => stats.rules.has(k)).map(([k, r]) => (
+                    <div key={k} className="flex gap-3">
+                      <span className="num grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-xs font-semibold text-brand">{r.priority}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-ink">{r.label}<span className="num text-muted">{plural(stats.rules.get(k)!, "claim")}</span></div>
+                        <p className="text-xs leading-relaxed text-muted">{r.summary}</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardBody>
+            </Card>
+            <Card>
+              <CardHeader title="Run and engine" description="The engine settings are the server's current configuration." />
+              <CardBody>
+                <DetailRow label="Verification ID">{view.demo ? "Sample (not stored)" : <span className="break-all font-mono text-xs">{view.id}</span>}</DetailRow>
+                {live?.document_id && <DetailRow label="Document ID"><span className="break-all font-mono text-xs">{live.document_id}</span></DetailRow>}
+                <DetailRow label="Evidence search">{stats.methods.length ? stats.methods.map(retrievalLabel).join(", ") : "Not recorded"}</DetailRow>
+                {engine ? (
+                  <>
+                    <DetailRow label="Pipeline version">{engine.pipeline_version}</DetailRow>
+                    <DetailRow label="Inference model">{engine.models.nli}</DetailRow>
+                    <DetailRow label="Embedding model">{engine.models.embedding}</DetailRow>
+                    <DetailRow label="Passages retrieved per claim">{engine.retrieval.top_k}</DetailRow>
+                    <DetailRow label="Contradiction threshold">{engine.policy.nli_contradiction_threshold}</DetailRow>
+                    <DetailRow label="Support threshold">{engine.policy.nli_support_threshold}</DetailRow>
+                  </>
+                ) : (
+                  <p className="pt-2 text-xs text-muted">Engine settings are unavailable.</p>
+                )}
+              </CardBody>
+            </Card>
+          </div>
+        </Collapse>
+      </section>
     </div>
   )
 }
-

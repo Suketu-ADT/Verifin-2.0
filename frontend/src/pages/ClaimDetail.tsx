@@ -1,460 +1,196 @@
-import { motion } from "framer-motion"
-import { useParams, Link } from "react-router-dom"
-import { useState, useEffect } from "react"
-import { Button } from "../components/ui/button"
-import { Badge } from "../components/ui/badge"
-import {
-  ArrowLeft,
-  CheckCircle2,
-  AlertTriangle,
-  HelpCircle,
-  FileText,
-  Calculator,
-  Calendar,
-  ExternalLink,
-  Loader2,
-  Maximize2,
-  Eye,
-  EyeOff,
-  Layers,
-  Search,
-  ShieldAlert,
-  Hash,
-} from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { Link, useParams } from "react-router-dom"
+import { ArrowLeft, ArrowRight, Eye, EyeOff, Lightbulb, Scale } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardBody, CardHeader } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeading } from "@/components/shared/PageHeading"
+import { ErrorState } from "@/components/shared/states"
+import { ConfidenceIndicator, RiskIndicator, StatusBadge } from "@/components/verification/indicators"
+import { EvidencePanel, hasEvidence } from "@/components/verification/EvidencePanel"
+import { TechnicalDetails } from "@/components/verification/TechnicalDetails"
+import { cn } from "@/lib/utils"
+import { humanize } from "@/lib/format"
+import { ruleInfo } from "@/lib/rules"
+import { normalizeVerdict, VERDICTS } from "@/lib/verdict"
 import { demoSessions } from "../lib/demoData"
 import {
-  getVerificationResults,
   getDocument,
   getDocumentFileUrl,
-  type VerificationResultResponse,
+  getVerificationResults,
   type ClaimResponse,
   type DocumentResponse,
+  type VerificationResultResponse,
 } from "../lib/api"
 import { PdfEvidenceViewer } from "../components/PdfEvidenceViewer"
 
 export default function ClaimDetail() {
-  const { id, claimId } = useParams()
+  const { id = "", claimId = "" } = useParams()
 
-  // 1. Check demo sessions first
+  // The shipped sample sessions are checked first; anything else is a stored verification.
   const demoSession = demoSessions.find((s) => s.id === id)
-  const demoClaim = demoSession?.claims.find((c) => c.id === claimId)
+  const demoClaims = useMemo(
+    () => demoSession?.claims.map((c) => ({ ...c, status: c.nli?.label ?? "UNVERIFIABLE" })) as unknown as ClaimResponse[] | undefined,
+    [demoSession],
+  )
 
-  // 2. Live session state
-  const [liveSession, setLiveSession] = useState<VerificationResultResponse | null>(null)
-  const [liveClaim, setLiveClaim] = useState<ClaimResponse | null>(null)
+  const [live, setLive] = useState<VerificationResultResponse | null>(null)
   const [docMeta, setDocMeta] = useState<DocumentResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [showPdfViewer, setShowPdfViewer] = useState(false)
-  const [pdfLoadError, setPdfLoadError] = useState(false)
+  const [showPdf, setShowPdf] = useState(false)
+  const [reload, setReload] = useState(0)
 
   useEffect(() => {
     if (demoSession || !id) return
+    let cancelled = false
     setLoading(true)
     setLoadError(null)
-
     getVerificationResults(id)
       .then((res) => {
-        setLiveSession(res)
-        const match = res.claims.find((c) => c.id === claimId)
-        if (match) {
-          setLiveClaim(match)
-        } else {
-          setLoadError(`Claim "${claimId}" not found in session "${id}".`)
-        }
-        setLoading(false)
-
-        if (res.document_id) {
-          getDocument(res.document_id)
-            .then(setDocMeta)
-            .catch(() => {})
-        }
+        if (cancelled) return
+        setLive(res)
+        if (res.document_id) getDocument(res.document_id).then((d) => !cancelled && setDocMeta(d)).catch(() => {})
       })
       .catch((err) => {
+        if (cancelled) return
         const detail = err?.response?.data?.detail || err?.message || "Failed to load claim details."
         setLoadError(typeof detail === "string" ? detail : JSON.stringify(detail))
-        setLoading(false)
       })
-  }, [id, claimId, demoSession])
+      .finally(() => !cancelled && setLoading(false))
+    return () => { cancelled = true }
+  }, [id, demoSession, reload])
 
-  // Handle loading state
-  if (loading) {
+  // a different claim starts with the source viewer closed
+  useEffect(() => setShowPdf(false), [claimId])
+
+  const claims = demoClaims ?? live?.claims ?? []
+  const index = claims.findIndex((c) => c.id === claimId)
+  const claim = index >= 0 ? claims[index] : null
+  const docTitle = demoSession?.document || docMeta?.filename || "Source document"
+
+  if (loading || (!claim && !loadError && !demoSession && !live)) {
     return (
-      <div className="max-w-2xl mx-auto text-center py-24 space-y-4">
-        <Loader2 className="h-8 w-8 text-amber-400 animate-spin mx-auto" />
-        <h1 className="text-lg font-semibold text-white">Loading Claim Verification...</h1>
-        <p className="text-xs text-slate-400 font-mono">Fetching evidence and reasoning details</p>
+      <div className="space-y-6" role="status" aria-label="Loading claim">
+        <Skeleton className="h-9 w-80" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-56 w-full" />
       </div>
     )
   }
-
-  // Active claim & document title
-  const activeClaim = demoClaim || liveClaim
-  const activeSessionId = demoSession?.id || liveSession?.id || id
-  const docTitle = demoSession?.document || docMeta?.filename || (liveSession ? `Document ${liveSession.document_id.slice(0, 8)}` : "Source Document")
-
-  if (!activeClaim) {
+  if (!claim) {
     return (
-      <div className="max-w-2xl mx-auto text-center py-20 space-y-4">
-        <h1 className="text-xl font-bold text-white mb-2">Claim not found</h1>
-        <p className="text-xs text-slate-400">
-          {loadError || `The claim "${claimId}" does not exist in session "${id}".`}
-        </p>
-        <Link to={id ? `/verify/results/${id}` : "/verify"}>
-          <Button variant="outline" size="sm">Back to Results</Button>
-        </Link>
-      </div>
+      <ErrorState
+        title="Claim not found"
+        message={loadError ?? `The claim "${claimId}" does not exist in this verification.`}
+        onRetry={loadError ? () => setReload((n) => n + 1) : undefined}
+      />
     )
   }
 
-  // The final verdict wins over the raw NLI label: rules such as table_mismatch can overrule an entailing sentence.
-  const finalStatus = (activeClaim.status || "").toUpperCase()
-  const rawStatus = ["SUPPORTED", "CONTRADICTED", "UNVERIFIED", "UNVERIFIABLE"].includes(finalStatus)
-    ? finalStatus
-    : (activeClaim.nli?.label || activeClaim.status || "").toUpperCase()
-  // Figures are percentages only for growth/margin style checks; table lookups compare amounts.
-  const numericUnit = /%|yoy|growth|margin|rate|delta/i.test(activeClaim.numerical_finding?.formula || "") ? "%" : ""
-  const meta =
-    rawStatus === "SUPPORTED" || rawStatus === "ENTAILMENT"
-      ? { icon: CheckCircle2, color: "text-emerald-300", border: "border-emerald-400/30", bg: "bg-emerald-500/10", text: "Supported" }
-      : rawStatus === "CONTRADICTED" || rawStatus === "CONTRADICTION"
-      ? { icon: AlertTriangle, color: "text-rose-300", border: "border-rose-400/30", bg: "bg-rose-500/10", text: "Contradicted" }
-      : { icon: HelpCircle, color: "text-amber-300", border: "border-amber-400/30", bg: "bg-amber-500/10", text: "Unverifiable" }
-
-  const pageNumber = activeClaim.evidence?.page_number || 1
-  const pdfUrl = liveSession?.document_id ? getDocumentFileUrl(liveSession.document_id) : null
+  const verdict = normalizeVerdict(claim.status)
+  const v = VERDICTS[verdict]
+  const rule = ruleInfo(claim.decided_by)
+  const flagged = claim.hallucination_type && claim.hallucination_type.toUpperCase() !== "NONE"
+  const pageNumber = claim.evidence?.page_number || 1
+  const documentId = live?.document_id
+  const pdfUrl = documentId ? getDocumentFileUrl(documentId) : null
+  const prev = index > 0 ? claims[index - 1] : null
+  const next = index < claims.length - 1 ? claims[index + 1] : null
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: "easeOut" }} className="max-w-3xl mx-auto space-y-6">
-      <Link to={`/verify/results/${activeSessionId}`} className="inline-flex items-center text-xs font-semibold text-slate-400 hover:text-white">
-        <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back to Verification Overview
-      </Link>
-
-      {/* Header */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <meta.icon className={`h-5 w-5 ${meta.color}`} />
-          <span className={`text-sm font-bold uppercase tracking-wide ${meta.color}`}>{meta.text}</span>
-          {demoSession && (
-            <Badge variant="outline" className="text-amber-300 border-amber-400/30 bg-amber-500/10 text-[10px]">
-              Demo
-            </Badge>
-          )}
-        </div>
-        <h1 className="text-xl font-semibold text-white leading-snug">"{activeClaim.claim_text}"</h1>
-        <div className="text-xs text-slate-400 mt-2 font-mono uppercase tracking-wide">
-          Claim Type: {activeClaim.claim_type}
-          {(activeClaim as { decided_by?: string | null }).decided_by && (
-            <span className="ml-3">Decided by: {(activeClaim as { decided_by?: string | null }).decided_by}</span>
-          )}
-        </div>
-      </div>
-
-      {/* NLI Card */}
-      {activeClaim.nli && (
-        <div className={`glass-subtle border rounded-lg p-5 ${meta.border} ${meta.bg}`}>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
-            Natural Language Inference (DeBERTa-v3)
-          </div>
-          <div className="h-2.5 w-full bg-white/10 rounded-full overflow-hidden flex mb-2">
-            <motion.div initial={{ width: 0 }} animate={{ width: `${activeClaim.nli.entailment * 100}%` }} transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }} className="h-full bg-emerald-500" />
-            <motion.div initial={{ width: 0 }} animate={{ width: `${activeClaim.nli.neutral * 100}%` }} transition={{ duration: 0.6, ease: "easeOut", delay: 0.15 }} className="h-full bg-slate-400" />
-            <motion.div initial={{ width: 0 }} animate={{ width: `${activeClaim.nli.contradiction * 100}%` }} transition={{ duration: 0.6, ease: "easeOut", delay: 0.2 }} className="h-full bg-rose-500" />
-          </div>
-          <div className="flex justify-between text-[11px] font-mono text-slate-400">
-            <span>Entailment {(activeClaim.nli.entailment * 100).toFixed(1)}%</span>
-            <span>Neutral {(activeClaim.nli.neutral * 100).toFixed(1)}%</span>
-            <span>Contradiction {(activeClaim.nli.contradiction * 100).toFixed(1)}%</span>
-          </div>
-        </div>
-      )}
-
-      {/* Numerical Reasoning Audit Card */}
-      {activeClaim.numerical_finding && activeClaim.numerical_finding.comparison_outcome !== "NO_CALCULATION" && (
-        <div className="glass-subtle border border-white/10 rounded-lg p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Calculator className="h-4 w-4 text-amber-400" />
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                Deterministic Numerical Audit
-              </div>
-            </div>
-            <Badge
-              variant="outline"
-              className={
-                activeClaim.numerical_finding.comparison_outcome === "VALIDATED"
-                  ? "text-emerald-300 border-emerald-400/30 bg-emerald-500/10 font-mono text-[10px]"
-                  : "text-rose-300 border-rose-400/30 bg-rose-500/10 font-mono text-[10px]"
-              }
-            >
-              {activeClaim.numerical_finding.comparison_outcome}
-            </Badge>
-          </div>
-
-          {activeClaim.numerical_finding.formula && (
-            <div className="p-2.5 rounded bg-black/30 border border-white/5 font-mono text-xs text-slate-300">
-              <span className="text-slate-500 mr-2">Formula:</span>
-              <span className="text-amber-200">{activeClaim.numerical_finding.formula}</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-xs font-mono">
-            {activeClaim.numerical_finding.computed_result !== null && (
-              <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-                <span className="text-slate-500 block text-[10px]">Computed Result</span>
-                <span className="text-white font-semibold">{activeClaim.numerical_finding.computed_result}{numericUnit}</span>
-              </div>
-            )}
-            {activeClaim.numerical_finding.reported_result !== null && (
-              <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-                <span className="text-slate-500 block text-[10px]">Reported Result</span>
-                <span className="text-white font-semibold">{activeClaim.numerical_finding.reported_result}{numericUnit}</span>
-              </div>
-            )}
-            {activeClaim.numerical_finding.tolerance !== null && (
-              <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-                <span className="text-slate-500 block text-[10px]">Rounding Tolerance</span>
-                <span className="text-slate-400">±{activeClaim.numerical_finding.tolerance}{numericUnit}</span>
-              </div>
-            )}
-          </div>
-
-          <p className="text-xs text-slate-300 font-sans leading-relaxed pt-1">
-            {activeClaim.numerical_finding.explanation}
-          </p>
-        </div>
-      )}
-
-      {/* Temporal Anchoring Card */}
-      {activeClaim.temporal_anchor && activeClaim.temporal_anchor.period_match !== "UNSPECIFIED" && (
-        <div className="glass-subtle border border-white/10 rounded-lg p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-cyan-400" />
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                Temporal Anchor & Grounding
-              </div>
-            </div>
-            <Badge
-              variant="outline"
-              className={
-                activeClaim.temporal_anchor.period_match === "ALIGNED"
-                  ? "text-emerald-300 border-emerald-400/30 bg-emerald-500/10 font-mono text-[10px]"
-                  : activeClaim.temporal_anchor.period_match === "MISALIGNED"
-                  ? "text-rose-300 border-rose-400/30 bg-rose-500/10 font-mono text-[10px]"
-                  : "text-amber-300 border-amber-400/30 bg-amber-500/10 font-mono text-[10px]"
-              }
-            >
-              {activeClaim.temporal_anchor.period_match}
-            </Badge>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono">
-            <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-              <span className="text-slate-500 block text-[10px]">Claim Period</span>
-              <span className="text-white">{activeClaim.temporal_anchor.claim_period || "None"}</span>
-            </div>
-            <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-              <span className="text-slate-500 block text-[10px]">Evidence Period</span>
-              <span className="text-white">{activeClaim.temporal_anchor.evidence_period || "None"}</span>
-            </div>
-            {activeClaim.temporal_anchor.document_period && (
-              <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-                <span className="text-slate-500 block text-[10px]">Document Context</span>
-                <span className="text-slate-300">{activeClaim.temporal_anchor.document_period}</span>
-              </div>
-            )}
-          </div>
-
-          <p className="text-xs text-slate-300 font-sans leading-relaxed">
-            {activeClaim.temporal_anchor.explanation}
-          </p>
-        </div>
-      )}
-
-      {/* Multi-Hop Synthesis Audit Card */}
-      {activeClaim.multi_hop_finding && (
-        <div className="glass-subtle border border-cyan-400/30 bg-cyan-500/5 rounded-lg p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-cyan-400" />
-              <div className="text-[10px] font-bold text-cyan-300 uppercase tracking-widest">
-                Multi-Hop Financial Provenance Graph
-              </div>
-            </div>
-            <Badge
-              variant="outline"
-              className={
-                activeClaim.multi_hop_finding.has_conflict
-                  ? "text-rose-300 border-rose-400/30 bg-rose-500/10 font-mono text-[10px]"
-                  : "text-cyan-300 border-cyan-400/30 bg-cyan-500/10 font-mono text-[10px]"
-              }
-            >
-              {activeClaim.multi_hop_finding.has_conflict ? "CONFLICT DETECTED" : "SYNTHESIZED"}
-            </Badge>
-          </div>
-
-          {activeClaim.multi_hop_finding.derived_formula && (
-            <div className="p-2.5 rounded bg-black/40 border border-white/5 font-mono text-xs text-slate-300">
-              <span className="text-slate-500 mr-2">Formula:</span>
-              <span className="text-cyan-200">{activeClaim.multi_hop_finding.derived_formula}</span>
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-2 text-xs font-mono">
-            {activeClaim.multi_hop_finding.provenance_pages && (
-              <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-                <span className="text-slate-500 block text-[10px]">Cross-Page Provenance</span>
-                <span className="text-white">Pages {activeClaim.multi_hop_finding.provenance_pages.join(", ")}</span>
-              </div>
-            )}
-            {activeClaim.multi_hop_finding.computed_value !== null && (
-              <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-                <span className="text-slate-500 block text-[10px]">Synthesized Metric</span>
-                <span className="text-cyan-300 font-semibold">{activeClaim.multi_hop_finding.target_metric}: ${Number(activeClaim.multi_hop_finding.computed_value).toLocaleString()}</span>
-              </div>
-            )}
-          </div>
-
-          <p className="text-xs text-slate-300 font-sans leading-relaxed">
-            {activeClaim.multi_hop_finding.explanation}
-          </p>
-        </div>
-      )}
-
-      {/* Hallucination Diagnostics & Explainable Summary Card */}
-      {activeClaim.reasoning_summary && (
-        <div className="glass-subtle border border-amber-400/20 bg-amber-500/5 rounded-lg p-5 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-amber-400" />
-              <div className="text-[10px] font-bold text-amber-300 uppercase tracking-widest">
-                Hallucination Verification Diagnostic
-              </div>
-            </div>
-            {activeClaim.hallucination_type && activeClaim.hallucination_type !== "NONE" && (
-              <Badge variant="outline" className="text-rose-300 border-rose-400/30 bg-rose-500/10 font-mono text-[10px]">
-                {activeClaim.hallucination_type.replace(/_/g, " ")}
-              </Badge>
-            )}
-          </div>
-          <p className="text-xs text-slate-200 font-sans leading-relaxed">
-            {activeClaim.reasoning_summary}
-          </p>
-        </div>
-      )}
-
-      {/* Retrieved Evidence Card with BM25 Hybrid RAG Provenance */}
-      <div className="glass-subtle border border-white/10 rounded-lg p-5 space-y-3">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Retrieved Evidence</div>
-            {activeClaim.evidence?.retrieval_method && (
-              <Badge variant="outline" className="text-indigo-300 border-indigo-400/30 bg-indigo-500/10 text-[9px] uppercase font-mono">
-                {activeClaim.evidence.retrieval_method === "hybrid" ? "BM25 Hybrid RAG" : activeClaim.evidence.retrieval_method}
-              </Badge>
-            )}
-          </div>
-          {activeClaim.evidence && activeClaim.evidence.page_number > 0 && (
-            <div className="flex items-center gap-1.5 text-xs font-mono text-slate-400">
-              <FileText className="h-3.5 w-3.5" /> {docTitle}, p. {activeClaim.evidence.page_number}
-            </div>
-          )}
-        </div>
-
-        {activeClaim.evidence && activeClaim.evidence.page_number > 0 ? (
+    <div className="mx-auto max-w-4xl space-y-6">
+      <PageHeading
+        back={{ to: `/verify/results/${id}`, label: "Back to results" }}
+        title={<span className="text-xl leading-snug sm:text-2xl">“{claim.claim_text}”</span>}
+        meta={
           <>
-            <p className="text-sm font-serif italic text-slate-300 leading-relaxed bg-white/[0.03] border border-white/10 rounded p-4">
-              "{activeClaim.evidence.text}"
-            </p>
-
-            {/* Hybrid Retrieval Score Breakdown */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 py-1 text-[11px] font-mono">
-              <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-                <span className="text-slate-500 block text-[9px] uppercase">Fused Hybrid Score</span>
-                <span className="text-indigo-300 font-semibold">{(activeClaim.evidence.similarity_score * 100).toFixed(1)}%</span>
-              </div>
-              {activeClaim.evidence.dense_score !== null && activeClaim.evidence.dense_score !== undefined && (
-                <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-                  <span className="text-slate-500 block text-[9px] uppercase">Dense Similarity</span>
-                  <span className="text-white font-semibold">{(activeClaim.evidence.dense_score * 100).toFixed(1)}%</span>
-                </div>
-              )}
-              {activeClaim.evidence.bm25_score !== null && activeClaim.evidence.bm25_score !== undefined && (
-                <div className="p-2 rounded bg-white/[0.02] border border-white/5">
-                  <span className="text-slate-500 block text-[9px] uppercase">BM25 Lexical Score</span>
-                  <span className="text-amber-300 font-semibold">{activeClaim.evidence.bm25_score.toFixed(2)}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Matched Keywords Tags */}
-            {activeClaim.evidence.matched_keywords && activeClaim.evidence.matched_keywords.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                <span className="text-[10px] font-mono text-slate-500 uppercase mr-1">Matched Terms:</span>
-                {activeClaim.evidence.matched_keywords.map((kw: string, ki: number) => (
-                  <Badge key={ki} variant="outline" className="text-slate-300 border-white/10 bg-white/5 font-mono text-[9px] px-1.5 py-0">
-                    <Hash className="h-2.5 w-2.5 mr-0.5 text-amber-400" /> {kw}
-                  </Badge>
-                ))}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between text-xs font-mono text-slate-400 pt-1">
-              <span>Overall Evidence Grounding: {(activeClaim.evidence.similarity_score * 100).toFixed(1)}%</span>
-              {pdfUrl && (
-                <button
-                  onClick={() => setShowPdfViewer(!showPdfViewer)}
-                  className="inline-flex items-center gap-1.5 text-amber-300 hover:text-amber-200 transition-colors text-xs font-sans font-medium"
-                >
-                  {showPdfViewer ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                  {showPdfViewer ? "Hide Source PDF" : `View Page ${pageNumber} in Source PDF`}
-                </button>
-              )}
-            </div>
+            <StatusBadge status={claim.status} size="lg" />
+            <span>Claim {index + 1} of {claims.length}</span>
+            <span>Type: {humanize(claim.claim_type)}</span>
+            {demoSession && <Badge tone="warning">Sample data</Badge>}
           </>
-        ) : (
-          <p className="text-sm text-slate-500 italic">
-            No supporting or contradicting passage was found in the source document for this claim —
-            that's why it's classified as unverifiable rather than false.
-          </p>
-        )}
+        }
+        actions={
+          <>
+            <Link to={prev ? `/verify/results/${id}/claim/${prev.id}` : "#"} aria-disabled={!prev} tabIndex={prev ? 0 : -1} onClick={(e) => !prev && e.preventDefault()}>
+              <Button size="sm" disabled={!prev}><ArrowLeft /> Previous</Button>
+            </Link>
+            <Link to={next ? `/verify/results/${id}/claim/${next.id}` : "#"} aria-disabled={!next} tabIndex={next ? 0 : -1} onClick={(e) => !next && e.preventDefault()}>
+              <Button size="sm" disabled={!next}>Next <ArrowRight /></Button>
+            </Link>
+          </>
+        }
+      />
+
+      <Card className="overflow-hidden" style={{ borderLeft: `3px solid ${v.color}` }}>
+        <div className="grid gap-px bg-line sm:grid-cols-3">
+          <div className="bg-surface p-4">
+            <div className="text-xs text-muted">Confidence</div>
+            <div className="mt-1.5"><ConfidenceIndicator value={claim.confidence} width="w-24" /></div>
+            <div className="mt-1 text-[11px] text-muted">How strongly the evidence aligns with this verdict</div>
+          </div>
+          <div className="bg-surface p-4">
+            <div className="text-xs text-muted">Risk</div>
+            <div className="mt-1.5"><RiskIndicator level={claim.risk_level} score={claim.hallucination_risk_score} /></div>
+            <div className="mt-1 text-[11px] text-muted">Risk that the claim is a hallucination</div>
+          </div>
+          <div className="bg-surface p-4">
+            <div className="text-xs text-muted">Decided by</div>
+            <div className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium text-ink"><Scale className="size-3.5 text-muted" aria-hidden="true" />{rule?.label ?? "Not recorded"}</div>
+            <div className="mt-1 text-[11px] text-muted">{rule ? `Rule ${rule.priority} of 7 in the policy order` : "No deciding rule is stored for this claim"}</div>
+          </div>
+        </div>
+      </Card>
+
+      <div className={cn("flex items-start gap-3 rounded-lg border p-4", v.tint, v.border)}>
+        <Lightbulb className={cn("mt-0.5 size-4 shrink-0", v.text)} aria-hidden="true" />
+        <div className="min-w-0 text-[14px] leading-relaxed">
+          <div className={cn("font-semibold", v.text)}>Why this verdict</div>
+          <p className="mt-0.5 text-ink">{claim.reasoning_summary || rule?.summary || v.meaning}</p>
+          {rule && claim.reasoning_summary && <p className="mt-1.5 text-[13px] text-muted">{rule.summary}</p>}
+          {flagged && <Badge tone="outline" className="mt-2">{humanize(claim.hallucination_type!)}</Badge>}
+        </div>
       </div>
 
-      {/* PDF.js Evidence Viewer Section (Phase 5 & 6) */}
-      {showPdfViewer && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          transition={{ duration: 0.3 }}
-          className="overflow-hidden"
-        >
-          <PdfEvidenceViewer
-            documentId={liveSession?.document_id || activeSessionId || ""}
-            initialPage={pageNumber}
-            boundingBox={activeClaim.evidence?.bounding_box}
-            evidenceText={activeClaim.evidence?.text}
-            documentTitle={docTitle}
-            ocrWords={activeClaim.evidence?.words}
-            isOcr={activeClaim.evidence?.is_ocr}
-            ocrConfidence={activeClaim.evidence?.ocr_confidence}
-          />
-        </motion.div>
+      <section aria-labelledby="ev-heading" className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="ev-heading" className="text-lg font-semibold tracking-tight text-ink">Evidence</h2>
+          {pdfUrl && hasEvidence(claim.evidence) && (
+            <Button size="sm" onClick={() => setShowPdf((s) => !s)} aria-expanded={showPdf}>
+              {showPdf ? <EyeOff /> : <Eye />} {showPdf ? "Hide source PDF" : `View page ${pageNumber} in the PDF`}
+            </Button>
+          )}
+        </div>
+        <EvidencePanel evidence={claim.evidence} documentName={docTitle} />
+        {showPdf && (
+          <div className="animate-fade-in">
+            <PdfEvidenceViewer
+              documentId={documentId || id}
+              initialPage={pageNumber}
+              boundingBox={claim.evidence?.bounding_box}
+              evidenceText={claim.evidence?.text}
+              documentTitle={docTitle}
+              ocrWords={claim.evidence?.words}
+              isOcr={claim.evidence?.is_ocr}
+              ocrConfidence={claim.evidence?.ocr_confidence}
+            />
+          </div>
+        )}
+      </section>
+
+      <section aria-labelledby="tech-heading" className="space-y-3">
+        <h2 id="tech-heading" className="text-lg font-semibold tracking-tight text-ink">Technical details</h2>
+        <TechnicalDetails claim={claim} />
+      </section>
+
+      {claim.source_sentence && claim.source_sentence !== claim.claim_text && (
+        <Card>
+          <CardHeader title="Original sentence" description="The sentence in the response this claim was taken from." />
+          <CardBody><p className="text-[14px] leading-relaxed text-ink">“{claim.source_sentence}”</p></CardBody>
+        </Card>
       )}
-
-      {/* Footer Badges */}
-      <div className="flex items-center gap-3 pt-2">
-        {activeClaim.risk_level && (
-          <Badge variant="outline" className="text-slate-400 border-white/10 bg-white/5">
-            Risk: {activeClaim.risk_level}
-          </Badge>
-        )}
-        {activeClaim.confidence !== null && activeClaim.confidence !== undefined && (
-          <Badge variant="outline" className="text-slate-400 border-white/10 bg-white/5">
-            Confidence: {Math.round(activeClaim.confidence * 100)}%
-          </Badge>
-        )}
-      </div>
-    </motion.div>
+    </div>
   )
 }

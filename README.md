@@ -240,7 +240,11 @@ Raw per-claim predictions are in `data/eval/results/<run>/<split>/`.
 | [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | threats, controls and the risk that remains |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | operating a deployment |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | free-tier deployment steps |
+| [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | design tokens, components, chart and accessibility rules, how to add a page |
+| [frontend/README.md](frontend/README.md) | working on the interface: commands, structure, demo build |
 | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | a rehearsed ten-minute demo |
+| [docs/VIDEO_SHOT_LIST.md](docs/VIDEO_SHOT_LIST.md) | shot list for the recorded demo video |
+| [CHANGELOG.md](CHANGELOG.md) | what changed, newest first |
 
 ## 💻 Getting Started
 
@@ -267,10 +271,38 @@ Rename `.env.example` to `.env` in the `frontend` directory and populate any nec
 
 ## 🎨 Design Philosophy
 
-VERIFIN is designed to look like a modern AI fintech product:
-- **Trustworthy & Professional**: Deep navy, neutral grays, and clean typography.
-- **Clear Risk Indicators**: Green (Supported), Red (Contradicted), and Amber (Unverifiable).
-- **Intuitive Visualizations**: Easy-to-understand charts and badges for technical ML data.
+> **Trust Through Transparency. Intelligence Through Evidence.**
+
+VERIFIN checks an AI-written financial report against its source document, so the interface has one job: let a reviewer see *why* a verdict was reached and check it themselves. The full reference, with every token, component and rule, is in [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md).
+
+**Principles**
+
+- **Trustworthy and professional.** A light canvas, a deep-navy sidebar, neutral greys and one typeface (Inter). Nothing decorative that a financial reader would distrust.
+- **Transparency over complexity.** Every verdict shows its evidence, the page it came from and the rule that decided it. Model internals are one click away under "Show technical details" and "Open full claim audit", never in the way.
+- **Data-driven visuals.** Charts and metrics show only what the engine or the recorded evaluation returned. A number the system cannot produce is shown as unavailable, never as a placeholder.
+- **Clarity over noise.** One accent colour for interaction, colour reserved for meaning, generous spacing and numbers in tabular figures so columns line up.
+- **Enterprise UX with progressive disclosure.** Summary first (verdict counts, risk, the claim list), then the claim, then the evidence, then the technical detail.
+
+**Colour system.** All colours are tokens declared once in the `@theme` block of [frontend/src/index.css](frontend/src/index.css) (`canvas`, `surface`, `ink`, `muted`, `line`, `brand`, `focus`, and so on); components use the token classes (`bg-surface`, `text-muted`, `border-line`) and never raw hex values. The verdict colours are fixed and carry the same meaning on every screen:
+
+| Verdict | Colour | Token |
+|---|---|---|
+| Supported | `#16A34A` | `supported` |
+| Contradicted | `#DC2626` | `contradicted` |
+| Unverifiable | `#D97706` | `unverifiable` |
+| Neutral | `#64748B` | `neutral` |
+
+Status never relies on colour alone: `StatusBadge` always pairs the colour with an icon and the word, and charts add a texture (solid, diagonal stripes, dots), a legend and a table view. Risk uses a separate navy three-step scale so it is never confused with a verdict.
+
+**Typography, layout and navigation.** Inter Variable (bundled, no external font request), a serif only for quoted source text (`.excerpt`), tabular numerals for figures (`.num`). One app shell (`Layout`): a collapsible sidebar grouped Workspace / Insights / System, a header with a breadcrumb and a live engine-status chip, and a content column capped at 1280px. Role-gated items (Administration) appear only for the roles that may open them.
+
+**Motion.** Short and quiet: 150, 200 and 300 ms (`--motion-fast`, `--motion-base`, `--motion-slow`) on one soft ease-out (`--ease-out-soft`), no bounce and no parallax. Pages fade and rise 6px, metric cards, claim cards and charts enter in a short stagger (`.stagger`), claim details expand with `Collapse`, and chart drawing (`CHART_DRAW_MS`, 450 ms) is the single exception above 300 ms. Nothing blocks input, and under `prefers-reduced-motion: reduce` animations are removed or made instant (page changes keep a plain fade).
+
+**Responsiveness.** Mobile-first with Tailwind breakpoints. Below 1024px the sidebar becomes a drawer (focus moves in, Escape closes and restores focus), tables drop low-priority columns (`hideBelow`) and grids collapse to one column; no page scrolls sideways.
+
+**Accessibility.** Visible focus rings on every control (`--color-focus`, a lighter ring on the navy sidebar), a skip-to-content link, semantic headings and landmarks, labelled form fields and dialogs, `aria-live` status messages, keyboard-operable menus, tabs and expandable rows, and text colours chosen for contrast on their tints. The mandated verdict colours do not pass the colour-blind separation check of the data-viz validator (see the honest note in [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md#colour-blind-safety-an-honest-note)); the icon, word, texture and table-view mitigations above are what keep verdicts distinguishable.
+
+**What the redesign did not touch.** No backend, API contract, authentication or verification logic changed, and no metric was invented: where the interface used to show static figures it now shows live values or says they are unavailable.
 
 ## 📜 License
 

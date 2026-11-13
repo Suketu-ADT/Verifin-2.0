@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react"
-import { CheckCircle2, Loader2 } from "lucide-react"
-import { Button } from "./ui/button"
-import { Input } from "./ui/input"
+import { CheckCircle2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Field, Input } from "@/components/ui/input"
+import { Notice } from "@/components/shared/states"
+import { cn } from "@/lib/utils"
 import { confirmPasswordReset, errorMessage, requestPasswordReset } from "../lib/api"
-
-const FIELD = "h-11 bg-white/[0.03] border-white/10 focus-visible:ring-amber-500 text-sm"
-const PRIMARY =
-  "w-full h-11 text-sm font-bold mt-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border-none shadow-lg shadow-amber-500/20"
 
 interface Props {
   /** Address to start with (the signed-in user's own, when setting a password from the account page). */
@@ -82,12 +80,12 @@ export function PasswordResetForm({ initialEmail = "", emailLocked = false, onDo
   if (finished) {
     return (
       <div className="space-y-4 text-center">
-        <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" />
+        <CheckCircle2 className="mx-auto size-10 text-supported" aria-hidden="true" />
         <div>
-          <h2 className="text-lg font-bold text-white">Password updated</h2>
-          <p className="mt-1 text-xs text-slate-400 leading-relaxed">Every other session was signed out. Use your new password from now on.</p>
+          <h2 className="text-lg font-semibold text-ink">Password updated</h2>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">Every other session was signed out. Use your new password from now on.</p>
         </div>
-        <Button type="button" onClick={onDone} className={PRIMARY}>{doneLabel}</Button>
+        <Button type="button" variant="primary" size="lg" onClick={onDone} className="w-full">{doneLabel}</Button>
       </div>
     )
   }
@@ -95,19 +93,14 @@ export function PasswordResetForm({ initialEmail = "", emailLocked = false, onDo
   if (!sent) {
     return (
       <form onSubmit={send} className="space-y-4">
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-300">Email Address</label>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className={FIELD} readOnly={emailLocked} required />
-        </div>
-        <p className="text-xs text-slate-400 leading-relaxed">We will email a 6-digit code to this address. Entering it lets you choose a new password.</p>
-        {error && <p role="alert" className="text-xs text-rose-400">{error}</p>}
-        <Button type="submit" disabled={busy} className={PRIMARY}>
-          {busy ? <Loader2 className="h-5 w-5 animate-spin text-black/70" /> : "Email me a code"}
-        </Button>
+        <Field label="Email address" htmlFor="reset-email">
+          <Input id="reset-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" readOnly={emailLocked} required autoComplete="email" />
+        </Field>
+        <p className="text-[13px] leading-relaxed text-muted">We will email a 6-digit code to this address. Entering it lets you choose a new password.</p>
+        {error && <Notice tone="error">{error}</Notice>}
+        <Button type="submit" variant="primary" size="lg" loading={busy} className="w-full">Email me a code</Button>
         {onCancel && (
-          <button type="button" onClick={onCancel} className="block w-full text-center text-xs text-slate-400 hover:text-white">
-            {cancelLabel}
-          </button>
+          <button type="button" onClick={onCancel} className="block w-full text-center text-[13px] text-muted hover:text-ink">{cancelLabel}</button>
         )}
       </form>
     )
@@ -115,47 +108,40 @@ export function PasswordResetForm({ initialEmail = "", emailLocked = false, onDo
 
   return (
     <form onSubmit={confirmReset} className="space-y-4">
-      <p className="text-xs text-slate-300 leading-relaxed">
-        If <span className="font-semibold text-white">{email.trim()}</span> has an account, a code is on its way. It expires in 10 minutes.
+      <p className="text-[13px] leading-relaxed text-muted">
+        If <span className="font-medium text-ink">{email.trim()}</span> has an account, a code is on its way. It expires in 10 minutes.
       </p>
-      <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-slate-300">6-digit code</label>
+      <Field label="6-digit code" htmlFor="reset-code">
         <Input
+          id="reset-code"
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
           inputMode="numeric"
           autoComplete="one-time-code"
           placeholder="123456"
-          className={`${FIELD} text-center text-lg tracking-[0.4em] font-mono`}
+          className="h-11 text-center font-mono text-lg tracking-[0.4em]"
           autoFocus
           required
         />
-      </div>
-      <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-slate-300">New password</label>
-        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" placeholder="••••••••" className={FIELD} required />
-        <ul className="space-y-0.5 pt-1 text-[11px]">
+      </Field>
+      <Field label="New password" htmlFor="reset-password">
+        <Input id="reset-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required />
+        <ul className="space-y-0.5 pt-1 text-xs">
           {([["At least 10 characters", rules.length], ["Contains a number", rules.number], ["Upper and lowercase letters", rules.upperLower]] as const).map(([label, ok]) => (
-            <li key={label} className={ok ? "text-emerald-400" : "text-slate-500"}>{ok ? "✓" : "•"} {label}</li>
+            <li key={label} className={cn(ok ? "text-supported-fg" : "text-muted")}>{ok ? "✓" : "•"} {label}</li>
           ))}
         </ul>
-      </div>
-      <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-slate-300">Confirm new password</label>
-        <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" placeholder="••••••••" className={FIELD} required />
-        {confirm && !matches && <div className="text-[10px] text-rose-400">Passwords do not match</div>}
-      </div>
-      {error && <p role="alert" className="text-xs text-rose-400">{error}</p>}
-      <Button type="submit" disabled={busy || code.length < 6 || !strong || !matches} className={PRIMARY}>
-        {busy ? <Loader2 className="h-5 w-5 animate-spin text-black/70" /> : "Change password"}
-      </Button>
-      <div className="flex justify-between text-xs">
+      </Field>
+      <Field label="Confirm new password" htmlFor="reset-confirm" error={confirm && !matches ? "Passwords do not match" : undefined}>
+        <Input id="reset-confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" aria-invalid={!!confirm && !matches} required />
+      </Field>
+      {error && <Notice tone="error">{error}</Notice>}
+      <Button type="submit" variant="primary" size="lg" loading={busy} disabled={code.length < 6 || !strong || !matches} className="w-full">Change password</Button>
+      <div className="flex justify-between text-[13px]">
         {emailLocked ? <span /> : (
-          <button type="button" onClick={() => { setSent(false); setError(null) }} className="text-slate-400 hover:text-white">
-            Use a different email
-          </button>
+          <button type="button" onClick={() => { setSent(false); setError(null) }} className="text-muted hover:text-ink">Use a different email</button>
         )}
-        <button type="button" onClick={() => send()} disabled={wait > 0 || busy} className="text-amber-400 hover:text-amber-300 disabled:text-slate-600">
+        <button type="button" onClick={() => void send()} disabled={wait > 0 || busy} className="font-medium text-brand-2 hover:underline disabled:text-faint disabled:no-underline">
           {wait > 0 ? `Resend in ${wait}s` : "Resend code"}
         </button>
       </div>

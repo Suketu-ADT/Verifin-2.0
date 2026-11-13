@@ -91,7 +91,8 @@ export function RequireAuth() {
   const location = useLocation()
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center text-sm text-slate-400" role="status">
+      <div className="flex h-dvh items-center justify-center gap-3 bg-canvas text-sm text-muted" role="status">
+        <span className="size-4 animate-spin rounded-full border-2 border-line-strong border-t-brand" aria-hidden="true" />
         Loading…
       </div>
     )
@@ -107,8 +108,8 @@ export function RequireRole({ minimum, children }: { minimum: "analyst" | "admin
   if (!allowed) {
     return (
       <div className="mx-auto max-w-md py-24 text-center">
-        <h2 className="text-lg font-semibold text-white">Not available for your role</h2>
-        <p className="mt-2 text-sm text-slate-400">Ask an administrator of your organisation for access.</p>
+        <h2 className="text-lg font-semibold text-ink">Not available for your role</h2>
+        <p className="mt-2 text-sm text-muted">Ask an administrator of your organisation for access.</p>
       </div>
     )
   }

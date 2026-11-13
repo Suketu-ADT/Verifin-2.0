@@ -1,47 +1,80 @@
-import { useState, type ReactNode } from "react"
-import { AlertTriangle, CheckCircle2, HelpCircle, Table2, BarChart3 } from "lucide-react"
+import { useEffect, useState, type ReactNode } from "react"
+import { CHART_DRAW_MS } from "@/lib/motion"
+import { BarChart3, Table2 } from "lucide-react"
+import { Card } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
+import { VERDICTS, VERDICT_ORDER, type Verdict } from "@/lib/verdict"
+
+export { humanize, percent, shortDate } from "@/lib/format"
 
 /**
- * Shared pieces for the Analytics charts.
+ * Shared pieces for every chart.
  *
- * Colours were checked with the data-viz palette validator against the card surface (#0e1016): the three verdict colours pass the
- * lightness band, chroma floor, colour-blind separation (worst pair 9.4) and contrast checks. Verdicts are never shown by colour
- * alone: every chart has a legend with an icon, and a table view of the same numbers.
+ * Colour: the three verdict colours are fixed by the design system (supported #16a34a, contradicted #dc2626, unverifiable #d97706).
+ * Checked with the data-viz palette validator on a white surface they pass the lightness, chroma and contrast checks but NOT the
+ * colour-blind separation check (green against red, ΔE 5.0 for deuteranopia) or the normal-vision floor for amber against red.
+ * Per the validator's own rule that is acceptable only with secondary encoding, so every verdict mark here also carries:
+ *   - a texture (solid = supported, diagonal stripes = contradicted, dots = unverifiable), via VerdictPatterns / .tex-* classes
+ *   - a legend with an icon and the word, and direct values in the tooltip and the table view
+ *   - a 2px surface-coloured gap between touching marks
  */
-
-export const SURFACE = "#0e1016"
+export const SURFACE = "#ffffff"
 export const VERDICT = {
-  SUPPORTED: { color: "#0d9488", label: "Supported", Icon: CheckCircle2 },
-  CONTRADICTED: { color: "#e11d48", label: "Contradicted", Icon: AlertTriangle },
-  UNVERIFIED: { color: "#d97706", label: "Unverified", Icon: HelpCircle },
+  SUPPORTED: VERDICTS.SUPPORTED,
+  CONTRADICTED: VERDICTS.CONTRADICTED,
+  UNVERIFIED: VERDICTS.UNVERIFIABLE,
 } as const
 /** One hue for plain magnitudes (counts of things that are not a verdict). */
-export const MAGNITUDE = "#6366f1"
-export const INK = { primary: "#f1f5f9", secondary: "#94a3b8", muted: "#64748b" }
-export const GRID = "rgba(255,255,255,0.06)"
+export const MAGNITUDE = "#1e3a5f"
+/** The systems VERIFIN is compared with. */
+export const COMPARED = "#64748b"
+export const INK = { primary: "#172033", secondary: "#64748b", muted: "#64748b" }
+export const GRID = "#e2e8f0"
+export const CURSOR = { fill: "rgba(20,43,74,0.05)" }
+export const GAP = { stroke: SURFACE, strokeWidth: 2 }
 
-export const axisTick = { fill: INK.secondary, fontSize: 11 }
+export const axisTick = { fill: INK.secondary, fontSize: 12 }
 
-export const percent = (share: number, digits = 1) => `${(share * 100).toFixed(digits)}%`
-
-export function humanize(raw: string): string {
-  const spaced = raw.replace(/[_-]+/g, " ").trim().toLowerCase()
-  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : "None"
+/** Chart animation on, unless the person asked for reduced motion. */
+export function useChartMotion() {
+  const [reduced, setReduced] = useState(() => (typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false))
+  useEffect(() => {
+    const q = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const on = () => setReduced(q.matches)
+    q.addEventListener("change", on)
+    return () => q.removeEventListener("change", on)
+  }, [])
+  return { isAnimationActive: !reduced, animationDuration: CHART_DRAW_MS, animationEasing: "ease-out" as const }
 }
 
-export function shortDate(iso: string): string {
-  const d = new Date(`${iso}T00:00:00Z`)
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })
-}
-
-/** Legend row: a swatch and the name in text ink (never the series colour), with an icon for verdicts. */
-export function Legend({ items }: { items: { label: string; color: string; Icon?: typeof CheckCircle2 }[] }) {
+/** SVG pattern fills, to be placed inside a recharts chart (as a child) or an svg. */
+export function VerdictPatterns() {
   return (
-    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-300" aria-label="Legend">
-      {items.map(({ label, color, Icon }) => (
+    <defs>
+      <pattern id="vt-contradicted" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="6" height="6" fill={VERDICTS.CONTRADICTED.color} />
+        <rect width="2" height="6" fill="rgba(255,255,255,0.55)" />
+      </pattern>
+      <pattern id="vt-unverifiable" width="6" height="6" patternUnits="userSpaceOnUse">
+        <rect width="6" height="6" fill={VERDICTS.UNVERIFIABLE.color} />
+        <circle cx="3" cy="3" r="1.2" fill="rgba(255,255,255,0.75)" />
+      </pattern>
+    </defs>
+  )
+}
+
+export function verdictFill(v: Verdict): string {
+  return v === "CONTRADICTED" ? "url(#vt-contradicted)" : v === "UNVERIFIABLE" ? "url(#vt-unverifiable)" : VERDICTS.SUPPORTED.color
+}
+
+/** Legend row: a swatch (with the verdict's texture) and the name in text ink, with an icon for verdicts. */
+export function Legend({ items, className }: { items: { label: string; color: string; texture?: string; Icon?: React.ComponentType<{ className?: string }> }[]; className?: string }) {
+  return (
+    <ul className={cn("flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[13px] text-ink", className)} aria-label="Legend">
+      {items.map(({ label, color, texture, Icon }) => (
         <li key={label} className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-[3px]" style={{ backgroundColor: color }} aria-hidden="true" />
-          {Icon && <Icon className="h-3 w-3 text-slate-400" aria-hidden="true" />}
+          <span className={cn("size-3 rounded-[3px]", texture)} style={{ backgroundColor: color }} aria-hidden="true" />
+          {Icon && <Icon className="size-3.5 text-muted" aria-hidden="true" />}
           {label}
         </li>
       ))}
@@ -49,21 +82,24 @@ export function Legend({ items }: { items: { label: string; color: string; Icon?
   )
 }
 
-export const verdictLegend = Object.values(VERDICT).map(({ color, label, Icon }) => ({ color, label, Icon }))
+export const verdictLegend = VERDICT_ORDER.map((k) => {
+  const v = VERDICTS[k]
+  return { label: v.label, color: v.color, texture: v.texture, Icon: v.Icon }
+})
 
-/** Tooltip card in the site's glass style. `rows` are label/value pairs, each with an optional swatch. */
+/** Tooltip card. `rows` are label/value pairs, each with an optional swatch. */
 export function TooltipCard({ title, rows }: { title: string; rows: { label: string; value: string; color?: string }[] }) {
   return (
-    <div className="rounded-xl border border-white/15 bg-[#0b0d13]/95 p-2.5 text-xs shadow-xl backdrop-blur">
-      <div className="mb-1.5 font-semibold text-white">{title}</div>
+    <div className="rounded-lg border border-line bg-surface p-2.5 text-xs shadow-md">
+      <div className="mb-1.5 font-semibold text-ink">{title}</div>
       <div className="space-y-1">
         {rows.map((r) => (
           <div key={r.label} className="flex items-center justify-between gap-6">
-            <span className="flex items-center gap-1.5 text-slate-300">
-              {r.color && <span className="h-2 w-2 rounded-[2px]" style={{ backgroundColor: r.color }} aria-hidden="true" />}
+            <span className="flex items-center gap-1.5 text-muted">
+              {r.color && <span className="size-2 rounded-[2px]" style={{ backgroundColor: r.color }} aria-hidden="true" />}
               {r.label}
             </span>
-            <span className="font-mono font-semibold text-white">{r.value}</span>
+            <span className="num font-semibold text-ink">{r.value}</span>
           </div>
         ))}
       </div>
@@ -77,23 +113,23 @@ export interface TableColumn<T> {
   align?: "left" | "right"
 }
 
-export function DataTable<T>({ columns, rows, caption }: { columns: TableColumn<T>[]; rows: T[]; caption: string }) {
+export function ChartTable<T>({ columns, rows, caption }: { columns: TableColumn<T>[]; rows: T[]; caption: string }) {
   return (
-    <div className="mt-3 max-h-64 overflow-auto rounded-lg border border-white/10">
-      <table className="w-full text-left text-[11px]">
+    <div className="max-h-72 overflow-auto rounded-lg border border-line" tabIndex={0} role="region" aria-label={`${caption} (scrollable)`}>
+      <table className="w-full text-left text-[13px]">
         <caption className="sr-only">{caption}</caption>
-        <thead className="sticky top-0 bg-[#0b0d13] text-slate-400">
+        <thead className="sticky top-0 bg-canvas text-xs text-muted">
           <tr>
             {columns.map((c) => (
-              <th key={c.header} scope="col" className={`px-3 py-2 font-semibold ${c.align === "right" ? "text-right" : ""}`}>{c.header}</th>
+              <th key={c.header} scope="col" className={cn("px-3 py-2 font-medium", c.align === "right" && "text-right")}>{c.header}</th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-white/5 text-slate-200">
+        <tbody className="divide-y divide-line text-ink">
           {rows.map((row, i) => (
             <tr key={i}>
               {columns.map((c) => (
-                <td key={c.header} className={`px-3 py-1.5 ${c.align === "right" ? "text-right font-mono" : ""}`}>{c.cell(row)}</td>
+                <td key={c.header} className={cn("px-3 py-1.5", c.align === "right" && "num text-right")}>{c.cell(row)}</td>
               ))}
             </tr>
           ))}
@@ -120,30 +156,47 @@ export function ChartCard<T>({ title, subtitle, summary, legend, table, forceTab
   const [showTable, setShowTable] = useState(false)
   const tableVisible = !!table && (forceTable || showTable)
   return (
-    <section className={`glass-card p-5 ${className}`}>
-      <header className="mb-3 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-bold text-white">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-[11px] text-slate-400">{subtitle}</p>}
+    <Card className={cn("p-5", className)}>
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2>
+          {subtitle && <p className="mt-0.5 text-[13px] text-muted">{subtitle}</p>}
         </div>
         {table && !forceTable && (
           <button
             type="button"
             onClick={() => setShowTable((v) => !v)}
-            className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-white/5"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 text-xs font-medium text-ink shadow-xs transition-colors hover:bg-subtle"
             aria-pressed={showTable}
           >
-            {showTable ? <BarChart3 className="h-3 w-3" /> : <Table2 className="h-3 w-3" />}
-            {showTable ? "Chart" : "Table"}
+            {showTable ? <BarChart3 className="size-3.5" /> : <Table2 className="size-3.5" />}
+            {showTable ? "Show chart" : "Show table"}
           </button>
         )}
       </header>
-      {legend && <div className="mb-2">{legend}</div>}
-      {tableVisible && table ? (
-        <DataTable {...table} />
-      ) : (
-        <div role="img" aria-label={`${title}. ${summary}`}>{children}</div>
-      )}
-    </section>
+      {legend && <div className="mb-3">{legend}</div>}
+      {tableVisible && table ? <ChartTable {...table} /> : <div role="img" aria-label={`${title}. ${summary}`}>{children}</div>}
+    </Card>
+  )
+}
+
+/**
+ * A single horizontal bar split by verdict, with textures and the counts written out. Pure HTML, so it works in cards and tables.
+ */
+export function VerdictBar({ supported, contradicted, unverifiable, height = "h-2.5", className }: { supported: number; contradicted: number; unverifiable: number; height?: string; className?: string }) {
+  const total = supported + contradicted + unverifiable
+  const label = `${supported} supported, ${contradicted} contradicted, ${unverifiable} unverifiable`
+  if (total === 0) return <div className={cn("rounded-full bg-line", height, className)} role="img" aria-label="No claims" />
+  const parts: { v: Verdict; n: number }[] = [
+    { v: "SUPPORTED", n: supported },
+    { v: "CONTRADICTED", n: contradicted },
+    { v: "UNVERIFIABLE", n: unverifiable },
+  ]
+  return (
+    <div className={cn("flex gap-0.5 overflow-hidden rounded-full bg-surface", height, className)} role="img" aria-label={label} title={label}>
+      {parts.filter((p) => p.n > 0).map((p) => (
+        <div key={p.v} className={cn("h-full transition-[width] duration-[var(--motion-slow)] ease-[var(--ease-out-soft)]", VERDICTS[p.v].bar, VERDICTS[p.v].texture)} style={{ width: `${(p.n / total) * 100}%` }} />
+      ))}
+    </div>
   )
 }

@@ -273,16 +273,11 @@ export function PdfEvidenceViewer({
 
     return (
       <div
-        className="absolute pointer-events-none rounded transition-all duration-200 border-2 border-amber-400 bg-amber-400/20 shadow-[0_0_12px_rgba(251,191,36,0.6)] animate-pulse z-10"
-        style={{
-          left: `${left}px`,
-          top: `${top}px`,
-          width: `${width}px`,
-          height: `${height}px`,
-        }}
+        className="pointer-events-none absolute z-10 rounded-sm border-2 border-unverifiable bg-unverifiable/15"
+        style={{ left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` }}
       >
-        <span className="absolute -top-5 left-0 px-1 py-0.2 bg-amber-500 text-black text-[9px] font-bold rounded font-mono uppercase tracking-wider">
-          Evidence Match
+        <span className="absolute -top-5 left-0 rounded-sm bg-navy px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+          Evidence match
         </span>
       </div>
     )
@@ -328,15 +323,15 @@ export function PdfEvidenceViewer({
           const isMedConf = word.confidence >= 60 && word.confidence < 80
 
           const borderBgClass = isLowConf
-            ? "border-rose-500/80 bg-rose-500/20 text-rose-300"
+            ? "border-contradicted bg-contradicted/20"
             : isMedConf
-            ? "border-amber-400/80 bg-amber-400/20 text-amber-300"
-            : "border-emerald-400/60 bg-emerald-400/10 text-emerald-300"
+            ? "border-unverifiable bg-unverifiable/20"
+            : "border-supported/70 bg-supported/10"
 
           return (
             <div
               key={idx}
-              className={`absolute pointer-events-auto border rounded text-[8px] font-mono transition-opacity group cursor-pointer ${borderBgClass}`}
+              className={`group pointer-events-auto absolute cursor-pointer rounded-sm border ${borderBgClass}`}
               style={{
                 left: `${left}px`,
                 top: `${top}px`,
@@ -345,9 +340,9 @@ export function PdfEvidenceViewer({
               }}
               title={`OCR: "${word.text}" | Confidence: ${word.confidence}%${isLowConf ? " [Needs Review]" : ""}`}
             >
-              <div className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5 rounded bg-black/90 border border-white/20 text-[9px] text-white whitespace-nowrap shadow-xl z-30 pointer-events-none">
+              <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-navy px-2 py-1 text-[11px] text-white shadow-md group-hover:block">
                 {word.text} ({word.confidence}%)
-                {isLowConf && <span className="text-rose-400 font-bold ml-1">[Review]</span>}
+                {isLowConf && <span className="ml-1 font-semibold">Needs review</span>}
               </div>
             </div>
           )
@@ -363,218 +358,108 @@ export function PdfEvidenceViewer({
   const handleZoomOut = () => setScale((s) => Math.max(0.75, s - 0.25))
   const handleRotate = () => setRotation((r) => (r + 90) % 360)
 
+  const tool = "size-8 p-0"
   return (
-    <div className="glass-subtle border border-white/10 rounded-xl overflow-hidden space-y-3 p-4 flex flex-col">
-      {/* Viewer Header & Controls */}
-      <div className="flex items-center justify-between gap-3 flex-wrap border-b border-white/10 pb-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <FileText className="h-4 w-4 text-amber-400 shrink-0" />
-          <span className="text-xs font-semibold text-white truncate max-w-[160px] sm:max-w-xs">
-            {documentTitle}
-          </span>
-          <Badge variant="outline" className="text-amber-300 border-amber-400/30 bg-amber-500/10 text-[10px] shrink-0 font-mono">
-            Page {currentPage} of {totalPages}
-          </Badge>
-
-          {/* Text Layer Status Badge */}
+    <div className="flex flex-col gap-3 overflow-hidden rounded-lg border border-line bg-surface p-4">
+      {/* Header and controls */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <FileText className="size-4 shrink-0 text-muted" aria-hidden="true" />
+          <span className="max-w-[12rem] truncate text-[13px] font-semibold text-ink sm:max-w-xs">{documentTitle}</span>
+          <Badge tone="outline" className="num">Page {currentPage} of {totalPages}</Badge>
           {hasTextLayer ? (
-            <Badge variant="outline" className="text-cyan-300 border-cyan-400/30 bg-cyan-500/10 text-[10px] shrink-0 font-mono flex items-center gap-1">
-              <MousePointerClick className="h-2.5 w-2.5" /> Selectable Text
-            </Badge>
+            <Badge tone="neutral"><MousePointerClick aria-hidden="true" /> Selectable text</Badge>
           ) : (
-            <Badge variant="outline" className="text-amber-300 border-amber-400/30 bg-amber-500/10 text-[10px] shrink-0 font-mono flex items-center gap-1">
-              <Layers className="h-2.5 w-2.5" /> Scanned Page
-            </Badge>
+            <Badge tone="warning"><Layers aria-hidden="true" /> Scanned page</Badge>
           )}
-
-          {/* OCR indicator badge */}
-          {isOcr && (
-            <Badge variant="outline" className="text-emerald-300 border-emerald-400/30 bg-emerald-500/10 text-[10px] shrink-0 font-mono flex items-center gap-1">
-              <CheckCircle2 className="h-2.5 w-2.5" /> OCR Indexed {ocrConfidence ? `(${ocrConfidence}%)` : ""}
-            </Badge>
-          )}
+          {isOcr && <Badge tone="brand"><CheckCircle2 aria-hidden="true" /> OCR indexed{ocrConfidence ? ` (${ocrConfidence}%)` : ""}</Badge>}
         </div>
 
-        {/* Toolbar Controls */}
-        <div className="flex items-center gap-1 shrink-0 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePrevPage}
-            disabled={currentPage <= 1 || loading}
-            className="h-7 w-7 p-0"
-            title="Previous Page"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
+        <div className="flex flex-wrap items-center gap-1" role="toolbar" aria-label="Document controls">
+          <Button size="sm" onClick={handlePrevPage} disabled={currentPage <= 1 || loading} className={tool} aria-label="Previous page"><ChevronLeft /></Button>
+          <span className="num px-1 text-xs text-muted" aria-live="polite">{currentPage}/{totalPages}</span>
+          <Button size="sm" onClick={handleNextPage} disabled={currentPage >= totalPages || loading} className={tool} aria-label="Next page"><ChevronRight /></Button>
 
-          <span className="text-[11px] font-mono text-slate-300 px-1">
-            {currentPage}/{totalPages}
-          </span>
+          <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleNextPage}
-            disabled={currentPage >= totalPages || loading}
-            className="h-7 w-7 p-0"
-            title="Next Page"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
+          <Button size="sm" onClick={handleZoomOut} disabled={scale <= 0.75 || loading} className={tool} aria-label="Zoom out"><ZoomOut /></Button>
+          <span className="num px-1 text-xs text-muted">{Math.round(scale * 100)}%</span>
+          <Button size="sm" onClick={handleZoomIn} disabled={scale >= 2.5 || loading} className={tool} aria-label="Zoom in"><ZoomIn /></Button>
+          <Button size="sm" onClick={handleRotate} disabled={loading} className={tool} aria-label="Rotate 90 degrees"><RotateCw /></Button>
 
-          <div className="w-px h-4 bg-white/10 mx-1" />
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleZoomOut}
-            disabled={scale <= 0.75 || loading}
-            className="h-7 w-7 p-0"
-            title="Zoom Out"
-          >
-            <ZoomOut className="h-3.5 w-3.5" />
-          </Button>
-
-          <span className="text-[10px] font-mono text-slate-400 px-1">
-            {Math.round(scale * 100)}%
-          </span>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleZoomIn}
-            disabled={scale >= 2.5 || loading}
-            className="h-7 w-7 p-0"
-            title="Zoom In"
-          >
-            <ZoomIn className="h-3.5 w-3.5" />
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRotate}
-            disabled={loading}
-            className="h-7 w-7 p-0"
-            title="Rotate 90°"
-          >
-            <RotateCw className="h-3.5 w-3.5" />
-          </Button>
-
-          {/* Toggle OCR Overlay Button (when OCR words exist) */}
-          {(ocrWords && ocrWords.length > 0) && (
+          {ocrWords && ocrWords.length > 0 && (
             <>
-              <div className="w-px h-4 bg-white/10 mx-1" />
-              <Button
-                variant={showOcrOverlay ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowOcrOverlay(!showOcrOverlay)}
-                className="h-7 px-2 text-[11px] gap-1 font-mono"
-                title="Toggle OCR Word Confidence Highlights"
-              >
-                <Layers className="h-3 w-3" />
-                {showOcrOverlay ? "Hide OCR" : "OCR Overlay"}
+              <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
+              <Button size="sm" variant={showOcrOverlay ? "primary" : "secondary"} aria-pressed={showOcrOverlay} onClick={() => setShowOcrOverlay(!showOcrOverlay)}>
+                <Layers /> {showOcrOverlay ? "Hide OCR" : "OCR overlay"}
               </Button>
             </>
           )}
 
-          <div className="w-px h-4 bg-white/10 mx-1" />
-
-          <button
-            type="button"
-            onClick={() => openRawPdf(currentPage)}
-            className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white px-2 py-1 rounded border border-white/10 hover:border-white/20 transition-colors"
-            title="Open raw PDF file in new browser window"
-          >
-            Tab <ExternalLink className="h-3 w-3" />
-          </button>
+          <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
+          <Button size="sm" onClick={() => void openRawPdf(currentPage)}>Open <ExternalLink /></Button>
         </div>
       </div>
 
-      {/* Coordinate & Grounding Status Banner */}
+      {/* Grounding status */}
       {boundingBox ? (
-        <div className="flex items-center gap-2 p-2 rounded bg-emerald-500/10 border border-emerald-400/20 text-emerald-300 text-xs">
-          <Sparkles className="h-3.5 w-3.5 shrink-0" />
-          <span>
-            Bounding-box overlay active on Page {currentPage}: highlighting extracted passage coordinates. Text layer is selectable.
-          </span>
+        <div className="flex items-center gap-2 rounded-md border border-unverifiable-line bg-unverifiable-tint px-3 py-2 text-xs text-ink">
+          <Sparkles className="size-3.5 shrink-0 text-unverifiable" aria-hidden="true" />
+          <span>The extracted passage is outlined on page {currentPage}. The text layer is selectable.</span>
         </div>
       ) : (
-        <div className="p-2.5 rounded bg-white/[0.02] border border-white/5 text-xs text-slate-400 leading-relaxed">
-          <span className="font-semibold text-slate-300 mr-1.5">Page-Level Grounding:</span>
-          Exact bounding box coordinates are not embedded in this document's text stream. Verbatim excerpt navigation is grounded to Page {currentPage}.
+        <div className="rounded-md border border-line bg-canvas px-3 py-2 text-xs leading-relaxed text-muted">
+          <span className="mr-1.5 font-medium text-ink">Page-level grounding.</span>
+          Exact coordinates are not embedded in this document's text stream, so the excerpt is grounded to page {currentPage}.
         </div>
       )}
 
-      {/* Verbatim Evidence Snippet Callout */}
       {evidenceText && (
-        <div className="p-3 rounded bg-black/40 border border-white/10 text-xs font-serif italic text-slate-300">
-          <span className="text-[10px] font-sans font-bold uppercase tracking-widest text-slate-500 block not-italic mb-1">
-            Grounded Passage Excerpt (Page {currentPage})
-          </span>
-          "{evidenceText}"
-        </div>
+        <figure className="rounded-md border border-line bg-canvas p-3">
+          <figcaption className="mb-1 text-xs font-medium text-muted">Grounded passage (page {currentPage})</figcaption>
+          <blockquote className="excerpt text-[13px] italic leading-relaxed text-ink">“{evidenceText}”</blockquote>
+        </figure>
       )}
 
-      {/* Canvas + Text Layer Viewport Container */}
-      <div
-        ref={containerRef}
-        className="relative w-full h-[520px] rounded-lg border border-white/10 bg-black/60 overflow-auto flex items-center justify-center p-4"
-      >
+      {/* Canvas, text layer and overlays */}
+      <div ref={containerRef} className="relative flex h-[520px] w-full items-start justify-center overflow-auto rounded-md border border-line bg-subtle p-4">
         {loading && (
-          <div className="text-center space-y-2">
-            <Loader2 className="h-8 w-8 text-amber-400 animate-spin mx-auto" />
-            <p className="text-xs text-slate-400">Loading document structure...</p>
+          <div role="status" className="m-auto space-y-2 text-center">
+            <Loader2 className="mx-auto size-7 animate-spin text-muted" aria-hidden="true" />
+            <p className="text-xs text-muted">Loading document…</p>
           </div>
         )}
 
         {rendering && !loading && (
-          <div className="absolute top-4 right-4 z-20 px-2 py-1 rounded bg-black/80 border border-white/20 text-[10px] text-amber-300 font-mono flex items-center gap-1.5 backdrop-blur-sm">
-            <Loader2 className="h-3 w-3 animate-spin" /> Rendering...
+          <div role="status" className="absolute right-4 top-4 z-20 flex items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-1 text-xs text-muted shadow-sm">
+            <Loader2 className="size-3 animate-spin" aria-hidden="true" /> Rendering…
           </div>
         )}
 
         {error && (
-          <div className="text-center space-y-3 p-6 max-w-sm">
-            <AlertCircle className="h-8 w-8 text-rose-400 mx-auto" />
-            <p className="text-xs text-slate-300">{error}</p>
-            <button
-              type="button"
-              onClick={() => openRawPdf()}
-              className="inline-flex items-center gap-1 text-xs text-amber-300 hover:text-amber-200"
-            >
-              Open PDF directly <ExternalLink className="h-3 w-3" />
+          <div role="alert" className="m-auto max-w-sm space-y-3 p-6 text-center">
+            <AlertCircle className="mx-auto size-7 text-contradicted" aria-hidden="true" />
+            <p className="text-[13px] text-ink">{error}</p>
+            <button type="button" onClick={() => void openRawPdf()} className="inline-flex items-center gap-1 text-[13px] font-medium text-brand-2 hover:underline">
+              Open the PDF directly <ExternalLink className="size-3.5" aria-hidden="true" />
             </button>
           </div>
         )}
 
-        {/* The PDF.js Canvas + Highlighting Overlay + Interactive Text Layer */}
         <div
-          className={`relative inline-block transition-opacity duration-150 ${
-            loading || error ? "hidden" : "opacity-100"
-          }`}
+          className={`relative inline-block ${loading || error ? "hidden" : ""}`}
           style={{
             width: canvasDimensions.width > 0 ? `${canvasDimensions.width}px` : undefined,
             height: canvasDimensions.height > 0 ? `${canvasDimensions.height}px` : undefined,
           }}
         >
-          <canvas ref={canvasRef} className="rounded shadow-2xl block max-w-none" />
-
-          {/* PDF.js Interactive Text Layer (Requirement B.1 - B.4) */}
+          <canvas ref={canvasRef} className="block max-w-none rounded-sm bg-white shadow-md" />
           <div
             ref={textLayerRef}
-            className="textLayer absolute inset-0 overflow-hidden pointer-events-auto select-text"
-            style={{
-              width: `${canvasDimensions.width}px`,
-              height: `${canvasDimensions.height}px`,
-            }}
+            className="textLayer pointer-events-auto absolute inset-0 select-text overflow-hidden"
+            style={{ width: `${canvasDimensions.width}px`, height: `${canvasDimensions.height}px` }}
           />
-
-          {/* Evidence Highlight Box (Requirement B.5) */}
           {renderHighlightBox()}
-
-          {/* OCR Confidence Overlay (Requirement B.6) */}
           {renderOcrConfidenceOverlay()}
         </div>
       </div>

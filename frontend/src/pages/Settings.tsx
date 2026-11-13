@@ -1,95 +1,130 @@
-import { motion } from "framer-motion"
 import { useEffect, useState } from "react"
-import { Badge } from "../components/ui/badge"
-import { ChevronRight, Sliders } from "lucide-react"
+import { Link, useNavigate } from "react-router-dom"
+import { CheckCircle2, LogOut, UserCircle } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { DetailRow, Section } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeading } from "@/components/shared/PageHeading"
+import { Notice } from "@/components/shared/states"
+import { cn } from "@/lib/utils"
+import { useAuth } from "@/lib/AuthContext"
+import { useStoredState } from "@/lib/hooks"
+import { useToast } from "@/components/ui/toast"
 import { getEngineConfig, type EngineConfig } from "../lib/api"
 
-function Row({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 py-2.5 border-b border-white/5 last:border-0">
-      <div>
-        <div className="text-xs font-semibold text-slate-200">{label}</div>
-        {note && <div className="text-[11px] text-slate-500">{note}</div>}
-      </div>
-      <div className="font-mono text-xs text-amber-300 break-all text-right">{value}</div>
-    </div>
-  )
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="glass-card p-5">
-      <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">{title}</h2>
-      {children}
-    </div>
-  )
-}
+const MODES = [
+  { id: "hybrid", label: "Hybrid", desc: "Meaning and exact wording combined (recommended)" },
+  { id: "dense", label: "Semantic", desc: "Matches passages by meaning" },
+  { id: "bm25", label: "Keyword", desc: "Matches exact terms" },
+]
 
 export default function Settings() {
+  const navigate = useNavigate()
+  const { toast } = useToast()
+  const { user, authDisabled, logout } = useAuth()
+  const [retrieval, setRetrieval] = useStoredState("verifin.retrieval", "hybrid")
   const [config, setConfig] = useState<EngineConfig | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getEngineConfig()
-      .then(setConfig)
-      .catch((err: any) => setError(err?.message || "Could not load the engine configuration."))
+    getEngineConfig().then(setConfig).catch((err: any) => setError(err?.message || "Could not load the engine configuration."))
   }, [])
 
+  const choose = (id: string, label: string) => {
+    setRetrieval(id)
+    toast({ title: "Preference saved", description: `New verifications will start with ${label} evidence search.`, tone: "success" })
+  }
+
   return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 font-mono">
-          <span>VERIFIN</span>
-          <ChevronRight className="h-3 w-3 text-slate-600" />
-          <span className="text-amber-400">Engine configuration</span>
-        </div>
-        <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-          <Sliders className="h-5 w-5 text-amber-400" /> Engine Configuration
-        </h1>
-        <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-          What the engine is running with right now. These values are set in the server's environment, not in the
-          browser, so they are shown here but cannot be changed from this page. Every report records the same values in
-          its provenance block.
-        </p>
+    <div className="mx-auto max-w-5xl">
+      <PageHeading title="Settings" subtitle="Your preferences for this browser, how the verification engine is configured, and your account." />
+
+      <div className="divide-y divide-line">
+        <Section title="Profile" description="The account you are signed in with.">
+          {user ? (
+            <>
+              <DetailRow label="Name">{authDisabled ? "Local mode" : user.name || "Not set"}</DetailRow>
+              {!authDisabled && <DetailRow label="Email">{user.email}</DetailRow>}
+              <DetailRow label="Role"><Badge tone="brand" className="capitalize">{authDisabled ? "Authentication off" : user.role}</Badge></DetailRow>
+              {!authDisabled && (
+                <div className="pt-4"><Link to="/account"><Button size="sm"><UserCircle /> Manage my account</Button></Link></div>
+              )}
+            </>
+          ) : <Skeleton className="h-16 w-full" />}
+        </Section>
+
+        <Section title="Preferences" description="Saved in this browser only. They change how the app behaves for you, not for your organisation.">
+          <fieldset>
+            <legend className="text-[13px] font-medium text-ink">Default evidence search</legend>
+            <p className="mt-0.5 text-xs text-muted">How new verifications look for passages in a document. You can still change it for each verification.</p>
+            <div role="radiogroup" aria-label="Default evidence search" className="mt-3 grid gap-2 sm:grid-cols-3">
+              {MODES.map((m) => {
+                const on = retrieval === m.id
+                return (
+                  <button key={m.id} type="button" role="radio" aria-checked={on} onClick={() => choose(m.id, m.label)}
+                    className={cn("rounded-lg border p-3 text-left transition-colors", on ? "border-brand bg-brand-tint" : "border-line bg-surface hover:border-line-strong hover:bg-subtle")}>
+                    <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-ink">{m.label}{on && <CheckCircle2 className="size-4 text-brand" aria-hidden="true" />}</div>
+                    <div className="mt-0.5 text-xs text-muted">{m.desc}</div>
+                  </button>
+                )
+              })}
+            </div>
+          </fieldset>
+        </Section>
+
+        <Section title="Verification configuration" description="What the engine is running with right now. These values are set in the server's environment, so they are shown here but cannot be changed from the browser. Every report records the same values in its provenance block.">
+          {error && <Notice tone="error" title="Engine configuration unavailable">{error}</Notice>}
+          {!config && !error && <div className="space-y-3"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-4 w-1/2" /><Skeleton className="h-4 w-3/5" /></div>}
+          {config && (
+            <div>
+              <Group title="Pipeline">
+                <DetailRow label="Pipeline version" hint="Stamped on every verification">{config.pipeline_version}</DetailRow>
+                <DetailRow label="Disabled checks">{config.policy.disabled_checks.join(", ") || "None"}</DetailRow>
+              </Group>
+              <Group title="Models">
+                <DetailRow label="Embedding">{config.models.embedding}</DetailRow>
+                <DetailRow label="Natural-language inference">{config.models.nli}</DetailRow>
+                <DetailRow label="Reranker">{config.models.reranker ?? "Off"}</DetailRow>
+                <DetailRow label="Claim-extraction LLM" hint="Only splits a statement into claims; never decides a verdict">{`${config.llm.provider}${config.llm.model ? ` / ${config.llm.model}` : ""}`}</DetailRow>
+              </Group>
+              <Group title="Retrieval">
+                <DetailRow label="Mode">{config.retrieval.mode}</DetailRow>
+                <DetailRow label="Fusion">{config.retrieval.fusion.toUpperCase()}</DetailRow>
+                <DetailRow label="Passages per claim">{config.retrieval.top_k}</DetailRow>
+              </Group>
+              <Group title="Verdict policy">
+                <DetailRow label="Support threshold (NLI)">{config.policy.nli_support_threshold.toFixed(2)}</DetailRow>
+                <DetailRow label="Contradiction threshold (NLI)">{config.policy.nli_contradiction_threshold.toFixed(2)}</DetailRow>
+                <DetailRow label="NLI aggregation">{config.policy.aggregation}</DetailRow>
+                <DetailRow label="Grounded-support overlap">{config.policy.grounded_support_min_overlap.toFixed(2)}</DetailRow>
+                <DetailRow label="Multi-figure support overlap">{config.policy.multi_figure_support_min_overlap.toFixed(2)}</DetailRow>
+              </Group>
+              <Group title="Scanned documents" last>
+                <DetailRow label="OCR confidence floor" hint="Figures read below this go to the Review Queue">{config.ocr.confidence_threshold}%</DetailRow>
+              </Group>
+              <div className="mt-4"><Badge tone="outline">Read-only</Badge></div>
+            </div>
+          )}
+        </Section>
+
+        <Section title="Account" description={authDisabled ? "Authentication is switched off on this server, so there is no account to sign out of." : "Sign out of VERIFIN on this browser."}>
+          {authDisabled ? (
+            <p className="text-[13px] text-muted">The server is running in local mode without authentication.</p>
+          ) : (
+            <Button variant="danger" onClick={() => { logout(); navigate("/login") }}><LogOut /> Sign out</Button>
+          )}
+        </Section>
       </div>
+    </div>
+  )
+}
 
-      {error && <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-300 text-xs">{error}</div>}
-      {!config && !error && <div className="text-xs text-slate-400">Loading…</div>}
-
-      {config && (
-        <div className="space-y-4">
-          <Section title="Pipeline">
-            <Row label="Pipeline version" value={config.pipeline_version} note="Stamped on every verification" />
-            <Row label="Disabled checks" value={config.policy.disabled_checks.join(", ") || "none"} />
-          </Section>
-
-          <Section title="Models">
-            <Row label="Embedding" value={config.models.embedding} />
-            <Row label="Natural-language inference" value={config.models.nli} />
-            <Row label="Reranker" value={config.models.reranker ?? "off"} />
-            <Row label="Claim-extraction LLM" value={`${config.llm.provider}${config.llm.model ? ` / ${config.llm.model}` : ""}`} note="Used only to split a statement into claims, never to decide a verdict" />
-          </Section>
-
-          <Section title="Retrieval">
-            <Row label="Mode" value={config.retrieval.mode} />
-            <Row label="Fusion" value={config.retrieval.fusion.toUpperCase()} />
-            <Row label="Passages per claim" value={String(config.retrieval.top_k)} />
-          </Section>
-
-          <Section title="Verdict policy">
-            <Row label="Support threshold (NLI)" value={config.policy.nli_support_threshold.toFixed(2)} />
-            <Row label="Contradiction threshold (NLI)" value={config.policy.nli_contradiction_threshold.toFixed(2)} />
-            <Row label="NLI aggregation" value={config.policy.aggregation} />
-            <Row label="Grounded-support overlap" value={config.policy.grounded_support_min_overlap.toFixed(2)} />
-            <Row label="Multi-figure support overlap" value={config.policy.multi_figure_support_min_overlap.toFixed(2)} />
-          </Section>
-
-          <Section title="Scanned documents">
-            <Row label="OCR confidence floor" value={`${config.ocr.confidence_threshold}%`} note="Figures read below this go to the Review Queue" />
-          </Section>
-        </div>
-      )}
-      <Badge variant="outline" className="text-[10px] text-slate-400 border-white/10">Read-only</Badge>
-    </motion.div>
+function Group({ title, children, last }: { title: string; children: React.ReactNode; last?: boolean }) {
+  return (
+    <div className={cn("pb-4", !last && "mb-4 border-b border-line")}>
+      <h3 className="mb-2 text-xs font-medium uppercase tracking-[0.06em] text-muted">{title}</h3>
+      {children}
+    </div>
   )
 }

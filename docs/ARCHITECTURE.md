@@ -65,7 +65,36 @@ A statement's risk is derived from its claims: it is as risky as its worst claim
 | Services | `app/services/` | ingestion, retrieval, NLI, numeric grounding, verdict policy, export, EDGAR, audit, job runner |
 | Repositories | `app/repositories/` | the only code that touches the database; every query is tenant-scoped |
 | Observability | `app/observability/` | request IDs and W3C `traceparent`, JSON logs, Prometheus metrics |
-| Frontend | `frontend/src/` | React 19, TypeScript, Tailwind; token held in `sessionStorage`; route guards by role |
+| Frontend | `frontend/src/` | React 19, TypeScript, Tailwind v4; token held in `sessionStorage`; route guards by role (see [Frontend](#frontend)) |
+
+### Frontend
+
+A single-page app (Vite, React Router 7, Tailwind v4 with CSS-first tokens, recharts, framer-motion, pdf.js). It talks only to the REST API under `/api/v1`; it holds no verification logic and computes no verdicts. The visual language is documented in [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
+
+**Routes** (`frontend/src/App.tsx`; the router `basename` is Vite's `BASE_URL`, so the same build works at `/` and under a Pages sub-path):
+
+| Path | Page | Access |
+|---|---|---|
+| `/` | landing | public |
+| `/login`, `/signup` | sign-in and registration (password, emailed code, Google) | public |
+| `/dashboard` | KPIs, recent verifications, verdict mix | signed in |
+| `/verify` | upload or paste a statement, "Use sample", "Verify claims" | signed in |
+| `/verify/results/:id` | results: verdict counts, risk, claim list, technical details | signed in |
+| `/verify/results/:id/claim/:claimId` | one claim's full audit with the PDF evidence viewer | signed in |
+| `/history`, `/review`, `/evidence`, `/reports` | history, review queue, evidence explorer, reports (including "Download PDF") | signed in |
+| `/analytics`, `/benchmark` | charts of live usage; recorded evaluation results | signed in |
+| `/system`, `/settings`, `/account` | engine health; profile, browser preferences and the read-only engine configuration; account details | signed in |
+| `/admin` | people, organisation, API keys, audit trail ("Verify integrity") | `RequireRole minimum="admin"` |
+
+**Shell.** Every signed-in route renders inside `components/layout/Layout.tsx`: skip link, `Sidebar` (items from `layout/nav.ts`, collapsible rail on desktop, drawer below 1024px), `Header` (breadcrumb, live `EngineStatus`, "New verification") and an animated `<Outlet />` that fades in on each route change. The only things kept in `localStorage` (via `useStoredState`) are the sidebar collapse state and the preferred retrieval mode.
+
+**State and auth.** There is no global store. Pages fetch with plain hooks and keep their own state; shared concerns are React context: `AuthProvider` / `useAuth` (the current user, login, register, email-code and Google sign-in, logout), `ToastProvider` / `useToast`. The access token lives in `sessionStorage` (`lib/auth.ts`), so closing the tab signs the user out. `RequireAuth` sends anonymous visitors to `/login`; `RequireRole` blocks a role below the minimum; when the backend runs with auth disabled the user is the anonymous local user. Roles are enforced by the API; the route guards only decide what to show.
+
+**API layer.** `lib/api.ts` is the only module that calls the network: one axios instance whose base is `VITE_API_BASE_URL` (`/` means "the origin that served the page", which is how the API-hosted demo build works). It adds the bearer token to every request and, on a 401 from anywhere except the sign-in calls, clears the token and returns to `/login`. Its TypeScript interfaces mirror the backend schemas. `lib/demoData.ts` still supplies the sample results for the built-in demo session ids; real sessions always come from the API. The backend key `UNVERIFIED` is shown as "Unverifiable" through `lib/verdict.ts`.
+
+**Charts.** recharts, wrapped by `components/charts/chartKit.tsx` (`ChartCard` with a Chart/Table switch, `Legend`, `TooltipCard`, `VerdictPatterns`, `VerdictBar`, `useChartMotion`) and `VerdictDonut`. Every verdict mark carries an icon or word and a texture as well as its colour, because the fixed verdict palette does not pass colour-blind separation on its own (details in [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md#colour-blind-safety-an-honest-note)). Charts draw once on mount and not at all under reduced motion.
+
+**Build.** `npm run build` runs `tsc -b` then `vite build`. `VITE_BASE` sets the asset base (the Pages workflow sets `/<repository>/`) and `VITE_API_BASE_URL` the API address. For a demo where the API serves the interface, build with both set to `/` (see `frontend/README.md`).
 
 ### Analytics
 
@@ -74,8 +103,9 @@ verifications and their claims, and `app/services/analytics_service.py` (pure fu
 a zero-filled daily trend, per-document and per-claim-type verdict mixes, kinds of hallucination, deciding rules, risk levels, a score
 histogram and the highest-risk flagged claims. The window is `days` whole UTC calendar days ending today, and the same-length window
 before it supplies the comparison. A CONTRADICTED claim counts as a hallucination and UNVERIFIED as unsupported; the hallucination
-rate is contradicted claims over all claims. The page shows every chart as a table too, and the verdict colours were checked for
-colour-blind separation against the dark card surface.
+rate is contradicted claims over all claims. The page shows every chart as a table too. The verdict colours were checked for
+colour-blind separation on the white card surface; they do not pass on colour alone, so every verdict mark also carries an icon or
+word and a texture (see [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md#colour-blind-safety-an-honest-note)).
 
 ### Benchmark
 

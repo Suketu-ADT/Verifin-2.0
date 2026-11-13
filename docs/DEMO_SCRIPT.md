@@ -10,7 +10,7 @@ first verification loads the models, so run the sample once before you present. 
 ## Setup
 
 1. Sign in as an analyst or admin (password, *Email code*, or *Continue with Google*, whichever the server has enabled). Have the sample PDF at hand.
-2. On New Verification, click *Try the Northstar sample report*: it uploads the bundled PDF and fills in the statement below. (Uploading `data/VERIFIN_sample_financial_report.pdf` yourself works the same way; the claim extractor is optional and can take a minute on CPU.)
+2. On New Verification, click *Use sample*: it uploads the bundled PDF and fills in the statement below. (Uploading `data/VERIFIN_sample_financial_report.pdf` yourself works the same way; the claim extractor is optional and can take a minute on CPU.)
 
 ## Story in one line
 
@@ -18,7 +18,7 @@ first verification loads the models, so run the sample once before you present. 
 
 ## Part 1. A statement with planted errors (4 min)
 
-If you did not use the sample button, paste:
+If you did not use *Use sample*, paste (then click *Verify claims*):
 
 > Revenue grew 22.5% year over year to USD 486.75 million in FY2025. Operating income for FY2025 was USD 74.25 million. Interest expense for FY2025 amounted to USD 9,450 million. Total assets reached USD 470.0 million at 31 March 2025. Cash and cash equivalents increased by USD 11.5 million during FY2025. Net profit decreased from USD 51.0 million in FY2024 to USD 46.35 million in FY2025. Northstar completed the acquisition of Helios Data Systems in FY2025.
 
@@ -34,15 +34,16 @@ Expected result, claim by claim:
 | Net profit decreased ... | supported | `nli` | true |
 | Acquisition of Helios Data Systems | unverified | `entity_novelty` | the name appears nowhere in the report; the system says it cannot verify, rather than guessing |
 
-Point out: the statement risk is the worst claim, so the summary is high risk. Open one claim to show the evidence and the
-"Decided by" rule on its detail page (the results list itself shows the verdict and claim text only). Open Reports and
-download the report to show it is exportable.
+Point out: the statement risk is the worst claim, so the summary is high risk. Click a claim row (each is numbered 01, 02, ...)
+to expand it: it shows the evidence quoted from the page and the "Decided by" rule. *Show technical details* opens the full
+technical record inline, and *Open full claim audit* opens the claim's own page with the evidence in the PDF viewer. Open Reports
+and click *Download PDF* to show the report is exportable.
 
 ## Part 2. Why it can be trusted (3 min)
 
-- Open the claim detail for the interest-expense claim and read "Decided by: table_mismatch": "this was decided by a rule, not by a model's
+- Expand the interest-expense claim (or click *Open full claim audit*) and read "Decided by": the table check; "this was decided by a rule, not by a model's
   opinion". No LLM is called during verification, so the same input gives the same verdict.
-- Open Admin, Audit, and click *Verify chain*: every action above was recorded in a hash-chained trail. Say what it proves
+- Open Administration (sidebar, System group), choose the *Audit trail* tab and click *Verify integrity*: every action above was recorded in a hash-chained trail. Say what it proves
   (nobody without database access altered or removed events) and what it does not (it cannot stop a database administrator
   rewriting the whole chain).
 - Open the downloaded PDF report from Reports and show its Provenance block: pipeline version, models, settings, document SHA-256.
@@ -63,7 +64,7 @@ a bar built from one claim says little (the counts are in brackets).
 
 Open **Analytics**. It summarises every finished verification in your organisation: totals and the hallucination rate against
 the previous period, claims per day by verdict, which documents and claim types are most affected, and the flagged claims most
-worth reviewing (each links to its evidence). Every chart has a *Table* button. If you have only run the sample, the page will
+worth reviewing (each links to its evidence). Every chart has a *Show table* button. If you have only run the sample, the page will
 show a single day; say so rather than presenting it as a trend. The screenshots in the project report use generated sample data
 for this page, and the report says so.
 
@@ -97,7 +98,7 @@ Do not use live: the three misses above.
 | Problem | Do this |
 |---|---|
 | First verification is slow | the models are loading on first use; wait, then repeat. Run the sample once before presenting |
-| *Try the Northstar sample report* says the file is empty (0 bytes) | a download manager such as Internet Download Manager is intercepting the `.pdf` request and returns nothing. Pause its browser integration, or upload `data/VERIFIN_sample_financial_report.pdf` with the file picker instead |
+| *Use sample* says the file is empty (0 bytes) | a download manager such as Internet Download Manager is intercepting the `.pdf` request and returns nothing. Pause its browser integration, or upload `data/VERIFIN_sample_financial_report.pdf` with the file picker instead |
 | A verdict differs from this page | say so; check the pipeline version in provenance; this page is dated to version 4.2 |
 | Job seems stuck | refresh History; the job continues in the background |
 | No network | run locally: `backend` with `uvicorn app.main:app`, frontend with `npm run dev` |

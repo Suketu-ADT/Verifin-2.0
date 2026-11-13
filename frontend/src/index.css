@@ -1,148 +1,185 @@
 @import "tailwindcss";
-@config "../tailwind.config.js";
+
+/*
+ * VERIFIN design tokens: the single source for colour, type, radius, shadow and motion.
+ * Pages and components use the utilities these generate (bg-canvas, text-muted, border-line, text-supported-fg, rounded-lg,
+ * shadow-sm ...). Do not hard-code hex values in components; add a token here instead.
+ *
+ * Verdict colours mean one thing everywhere (badges, charts, tables):
+ *   supported = green, contradicted = red, unverifiable = amber, neutral = slate.
+ * Each has a base colour (fills, icons, chart marks), a darker "fg" for text on tints (WCAG AA), a faint tint and a border.
+ */
+@theme {
+  --font-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  /* surfaces and ink */
+  --color-canvas: #f7f9fc;
+  --color-surface: #ffffff;
+  --color-subtle: #f1f5f9;
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+  --color-ink: #172033;
+  --color-muted: #64748b;
+  --color-faint: #94a3b8; /* decorative only (icons, dividers); never used for text */
+
+  /* brand */
+  --color-navy: #0b1220; /* sidebar */
+  --color-navy-line: #1b2638;
+  --color-brand: #142b4a;
+  --color-brand-2: #1e3a5f;
+  --color-brand-tint: #eaf0f8;
+  --color-focus: #2f6bb3;
+  --color-sky: #8db4e8; /* active marker and focus ring on the navy sidebar */
+
+  /* verification status */
+  --color-supported: #16a34a;
+  --color-supported-fg: #15803d;
+  --color-supported-tint: #f0fdf4;
+  --color-supported-line: #bbf7d0;
+  --color-contradicted: #dc2626;
+  --color-contradicted-fg: #b91c1c;
+  --color-contradicted-tint: #fef2f2;
+  --color-contradicted-line: #fecaca;
+  --color-unverifiable: #d97706;
+  --color-unverifiable-fg: #b45309;
+  --color-unverifiable-tint: #fffbeb;
+  --color-unverifiable-line: #fde68a;
+  --color-neutral: #64748b;
+  --color-neutral-fg: #475569;
+  --color-neutral-tint: #f1f5f9;
+  --color-neutral-line: #e2e8f0;
+
+  /* risk uses its own single-hue navy scale so it is never mistaken for a verdict */
+  --color-risk-low: #8fa6c4;
+  --color-risk-medium: #4d6d97;
+  --color-risk-high: #142b4a;
+
+  /* radius scale */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* shadow scale: restrained, neutral */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.07), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 16px 32px -8px rgba(15, 23, 42, 0.16), 0 4px 8px -4px rgba(15, 23, 42, 0.08);
+
+  /* motion: short, eased, never bouncing. JS twins live in lib/motion.ts */
+  --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --animate-fade-in: fade-in var(--motion-base) var(--ease-out-soft) backwards;
+  --animate-rise: rise var(--motion-slow) var(--ease-out-soft) backwards;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+}
 
 @layer base {
   :root {
-    --background: 224 25% 5%;
-    --foreground: 210 20% 98%;
-    --card: 224 20% 7%;
-    --card-foreground: 210 20% 98%;
-    --popover: 224 24% 6%;
-    --popover-foreground: 210 20% 98%;
-    --primary: 38 92% 50%;
-    --primary-foreground: 220 15% 10%;
-    --secondary: 224 16% 12%;
-    --secondary-foreground: 210 20% 95%;
-    --muted: 224 16% 11%;
-    --muted-foreground: 220 12% 65%;
-    --accent: 224 18% 13%;
-    --accent-foreground: 210 20% 95%;
-    --destructive: 350 84% 60%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 224 15% 15%;
-    --input: 224 15% 14%;
-    --ring: 38 92% 50%;
-    --radius: 0.875rem;
-    --gold: 38 92% 50%;
+    --motion-fast: 150ms;
+    --motion-base: 200ms;
+    --motion-slow: 300ms;
+    --ease-in-out-soft: cubic-bezier(0.4, 0, 0.2, 1);
   }
-
-  html { 
-    color-scheme: dark; 
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  html {
+    color-scheme: light;
+    /* the page never jumps sideways when a route has no scrollbar */
+    scrollbar-gutter: stable;
+    background: var(--color-canvas);
+    -webkit-text-size-adjust: 100%;
   }
-  
-  code, pre, .font-mono {
-    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  }
-
-  * { 
-    border-color: rgba(255, 255, 255, 0.08); 
-    scrollbar-width: thin; 
-    scrollbar-color: rgba(255, 255, 255, 0.15) transparent; 
-  }
-  *::-webkit-scrollbar { width: 6px; height: 6px; }
-  *::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 999px; }
-  *::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
-  
   body {
-    background-color: #07080c;
-    color: hsl(var(--foreground));
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    font-feature-settings: "cv11", "ss03";
+    -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
   }
+  *, *::before, *::after { border-color: var(--color-line); }
+  ::selection { background: #cfdcf0; color: var(--color-ink); }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  /* inside the dark sidebar the ring needs to read on navy */
+  .on-navy :focus-visible { outline-color: #8db4e8; }
+
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+
+  * { scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-thumb { background: var(--color-line-strong); border-radius: 999px; }
 }
 
-.app-shell-bg {
-  position: relative;
-  background-color: #07080c;
-  background-image:
-    radial-gradient(1200px circle at 15% -8%, rgba(245, 158, 11, 0.08), transparent 50%),
-    radial-gradient(900px circle at 85% 5%, rgba(99, 102, 241, 0.06), transparent 45%),
-    radial-gradient(1100px circle at 50% 105%, rgba(16, 185, 129, 0.04), transparent 55%),
-    linear-gradient(180deg, #090a0f 0%, #07080c 100%);
-  background-attachment: fixed;
-}
-.app-shell-bg::before {
-  content: ""; 
-  position: fixed; 
-  inset: 0; 
-  z-index: 0; 
-  pointer-events: none; 
-  opacity: 0.35;
-  background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 36px 36px;
-  mask-image: radial-gradient(ellipse 80% 65% at 50% 10%, black, transparent 80%);
-  -webkit-mask-image: radial-gradient(ellipse 80% 65% at 50% 10%, black, transparent 80%);
-}
-
-/* Glassmorphism primitives */
-.glass { 
-  background: rgba(15, 18, 28, 0.65); 
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%); 
-  border: 1px solid rgba(255, 255, 255, 0.08); 
-  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+@layer components {
+  /* numbers in metrics and tables align in columns */
+  .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum", "cv11"; }
+  /* a quote of the source document */
+  .excerpt { font-family: var(--font-serif); }
+  /*
+   * Entrance for lists and grids: each direct child rises in turn (40 ms apart, capped at 240 ms so a long list never feels slow).
+   * `backwards` fill means the animation leaves no transform behind afterwards, so menus and tooltips inside the children
+   * are not trapped in a new stacking context.
+   */
+  .stagger > * { animation: var(--animate-rise); }
+  .stagger > *:nth-child(2) { animation-delay: 40ms; }
+  .stagger > *:nth-child(3) { animation-delay: 80ms; }
+  .stagger > *:nth-child(4) { animation-delay: 120ms; }
+  .stagger > *:nth-child(5) { animation-delay: 160ms; }
+  .stagger > *:nth-child(6) { animation-delay: 200ms; }
+  .stagger > *:nth-child(n + 7) { animation-delay: 240ms; }
+  /* expand and collapse (see ui/collapse.tsx and the claim card) */
+  .collapse-rows { transition: grid-template-rows var(--motion-base) var(--ease-in-out-soft); }
+  .skeleton {
+    background: linear-gradient(90deg, var(--color-subtle) 25%, #e8edf4 37%, var(--color-subtle) 63%);
+    background-size: 400% 100%;
+    animation: var(--animate-shimmer);
+    border-radius: var(--radius-md);
+  }
 }
 
-.glass-card {
-  background: linear-gradient(135deg, rgba(20, 24, 38, 0.7) 0%, rgba(13, 16, 26, 0.6) 100%);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 12px 36px -10px rgba(0, 0, 0, 0.65), inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+/* texture overlays that give each verdict a second, non-colour cue inside charts and bars */
+.tex-contradicted {
+  background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0 2px, transparent 2px 6px);
 }
-.glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 16px 44px -10px rgba(0, 0, 0, 0.75), inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+.tex-unverifiable {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.7) 1.2px, transparent 1.4px);
+  background-size: 6px 6px;
 }
 
-.glass-strong { 
-  background: rgba(18, 22, 36, 0.82); 
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%); 
-  border: 1px solid rgba(255, 255, 255, 0.12); 
-  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.7), inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton { animation: none; }
+  .stagger > * { animation: none; }
 }
 
-.glass-subtle { 
-  background: rgba(255, 255, 255, 0.025); 
-  backdrop-filter: blur(12px) saturate(130%);
-  -webkit-backdrop-filter: blur(12px) saturate(130%); 
-  border: 1px solid rgba(255, 255, 255, 0.06); 
+@media print {
+  aside, header.app-header, .no-print { display: none !important; }
+  body { background: #fff; }
 }
-
-.glass-inset { 
-  background: rgba(6, 8, 14, 0.65); 
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px); 
-  border: 1px solid rgba(255, 255, 255, 0.05); 
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
-}
-
-.glass-shadow { 
-  box-shadow: 0 10px 36px -12px rgba(0, 0, 0, 0.65), 0 1px 0 0 rgba(255, 255, 255, 0.07) inset; 
-}
-
-.luxury-divider { 
-  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.12), transparent); 
-  height: 1px; 
-}
-
-/* Glowing Accent Utilities */
-.glow-amber {
-  box-shadow: 0 0 24px -4px rgba(245, 158, 11, 0.3);
-}
-.glow-emerald {
-  box-shadow: 0 0 24px -4px rgba(16, 185, 129, 0.3);
-}
-.glow-rose {
-  box-shadow: 0 0 24px -4px rgba(244, 63, 94, 0.3);
-}
-.glow-indigo {
-  box-shadow: 0 0 24px -4px rgba(99, 102, 241, 0.3);
-}
-
-.text-gold { color: #f59e0b; }
-

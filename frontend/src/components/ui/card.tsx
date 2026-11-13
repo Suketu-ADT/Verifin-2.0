@@ -1,102 +1,62 @@
-import * as React from "react"
+import type { ComponentProps, ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
-function Card({
-  className,
-  size = "default",
-  ...props
-}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+/** The one surface: white, thin neutral border, restrained shadow. `interactive` adds the hover lift for clickable cards. */
+export function Card({ className, interactive, ...props }: ComponentProps<"div"> & { interactive?: boolean }) {
   return (
     <div
-      data-slot="card"
-      data-size={size}
       className={cn(
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-2xl glass glass-shadow py-(--card-spacing) text-sm text-card-foreground [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-2xl *:[img:last-child]:rounded-b-2xl",
-        className
+        "min-w-0 rounded-lg border border-line bg-surface shadow-xs",
+        interactive && "transition-[box-shadow,border-color,transform] duration-[var(--motion-base)] ease-[var(--ease-out-soft)] hover:-translate-y-px hover:border-line-strong hover:shadow-md active:translate-y-0 active:shadow-sm",
+        className,
       )}
       {...props}
     />
   )
 }
 
-function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+export function CardHeader({ title, description, action, className }: { title: ReactNode; description?: ReactNode; action?: ReactNode; className?: string }) {
   return (
-    <div
-      data-slot="card-header"
-      className={cn(
-        "group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-2xl px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)",
-        className
-      )}
-      {...props}
-    />
+    <div className={cn("flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4", className)}>
+      <div className="min-w-0">
+        <h2 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2>
+        {description && <p className="mt-0.5 text-[13px] text-muted">{description}</p>}
+      </div>
+      {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
+    </div>
   )
 }
 
-function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+export function CardBody({ className, ...props }: ComponentProps<"div">) {
+  return <div className={cn("p-5", className)} {...props} />
+}
+
+export function CardFooter({ className, ...props }: ComponentProps<"div">) {
+  return <div className={cn("flex items-center gap-3 rounded-b-lg border-t border-line bg-canvas px-5 py-3", className)} {...props} />
+}
+
+/** A labelled section for settings-style pages: title and help on the side, content on the right. */
+export function Section({ title, description, children, className }: { title: string; description?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <div
-      data-slot="card-title"
-      className={cn(
-        "text-base leading-snug font-medium group-data-[size=sm]/card:text-sm",
-        className
-      )}
-      {...props}
-    />
+    <section className={cn("grid gap-4 py-6 first:pt-0 lg:grid-cols-[minmax(0,260px)_1fr] lg:gap-10", className)}>
+      <div>
+        <h2 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2>
+        {description && <p className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p>}
+      </div>
+      <Card className="min-w-0 p-5">{children}</Card>
+    </section>
   )
 }
 
-function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+/** One "label … value" row inside a Section or card. */
+export function DetailRow({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children: ReactNode }) {
   return (
-    <div
-      data-slot="card-description"
-      className={cn("text-sm text-muted-foreground", className)}
-      {...props}
-    />
+    <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-line py-2.5 first:pt-0 last:border-0 last:pb-0">
+      <div className="min-w-0">
+        <div className="text-[13px] font-medium text-ink">{label}</div>
+        {hint && <div className="text-xs text-muted">{hint}</div>}
+      </div>
+      <div className="num min-w-0 break-words text-right text-[13px] text-ink">{children}</div>
+    </div>
   )
-}
-
-function CardAction({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="card-action"
-      className={cn(
-        "col-start-2 row-span-2 row-start-1 self-start justify-self-end",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-function CardContent({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="card-content"
-      className={cn("px-(--card-spacing)", className)}
-      {...props}
-    />
-  )
-}
-
-function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="card-footer"
-      className={cn(
-        "flex items-center rounded-b-2xl border-t bg-muted/50 p-(--card-spacing)",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-export {
-  Card,
-  CardHeader,
-  CardFooter,
-  CardTitle,
-  CardAction,
-  CardDescription,
-  CardContent,
 }

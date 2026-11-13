@@ -81,13 +81,13 @@ export function GoogleSignInButton({ clientId, onCredential }: Props) {
     }
   }, [clientId])
 
-  if (failed) return <p className="text-center text-xs text-slate-500">Google sign-in is unavailable right now.</p>
+  if (failed) return <p className="text-center text-xs text-muted">Google sign-in is unavailable right now.</p>
   return (
     <div
       ref={wrapper}
-      className="group relative h-11 w-full overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] shadow-sm transition-colors hover:border-amber-500/40 hover:bg-white/[0.07] focus-within:border-amber-500/60 focus-within:ring-2 focus-within:ring-amber-500/30"
+      className="group relative h-11 w-full overflow-hidden rounded-md border border-line-strong bg-surface shadow-xs transition-colors hover:bg-subtle focus-within:border-brand-2 focus-within:ring-3 focus-within:ring-focus/25"
     >
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-3 text-sm font-semibold text-slate-200 group-hover:text-white">
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-3 text-sm font-medium text-ink">
         <GoogleG />
         Continue with Google
       </div>

@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react"
 import { useNavigate, Link, useLocation } from "react-router-dom"
-import { motion, AnimatePresence } from "framer-motion"
-import { ShieldCheck, FileSearch, Cpu, ArrowLeft, Loader2, CheckCircle2, Eye, EyeOff } from "lucide-react"
-import { Button } from "../components/ui/button"
-import { Input } from "../components/ui/input"
+import { ArrowLeft, Eye, EyeOff, FileSearch, ShieldCheck } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Field, Input } from "@/components/ui/input"
+import { Notice } from "@/components/shared/states"
+import { cn } from "@/lib/utils"
+import { VERDICT_ORDER, VERDICTS } from "@/lib/verdict"
 import { useAuth } from "../lib/AuthContext"
 import { errorMessage, fetchAuthOptions, requestOtp, type AuthOptions } from "../lib/api"
 import { EmailCodeForm } from "../components/EmailCodeForm"
@@ -13,10 +15,10 @@ import { PasswordResetForm } from "../components/PasswordResetForm"
 export default function Auth() {
   const navigate = useNavigate()
   const location = useLocation()
-  
+
   // Determine initial state based on route, but allow toggling without navigating
   const [isLogin, setIsLogin] = useState(location.pathname === "/login")
-  
+
   // Sync state if route actually changes from outside
   useEffect(() => {
     setIsLogin(location.pathname === "/login")
@@ -25,7 +27,7 @@ export default function Auth() {
   // Login fields
   const [loginEmail, setLoginEmail] = useState("")
   const [loginPassword, setLoginPassword] = useState("")
-  
+
   // Signup fields
   const [signupName, setSignupName] = useState("")
   const [signupEmail, setSignupEmail] = useState("")
@@ -35,7 +37,7 @@ export default function Auth() {
   const [codeSent, setCodeSent] = useState(false)
   const [resendWait, setResendWait] = useState(0)
   const [showSignupPassword, setShowSignupPassword] = useState(false)
-  
+
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { login, register, loginWithGoogle, user } = useAuth()
@@ -62,11 +64,11 @@ export default function Auth() {
 
   const googleBlock = options?.google_client_id ? (
     <div className="mt-6">
-      <div className="mb-4 flex items-center gap-3 text-[10px] uppercase tracking-widest text-slate-500">
-        <span className="h-px flex-1 bg-white/10" /> or <span className="h-px flex-1 bg-white/10" />
+      <div className="mb-4 flex items-center gap-3 text-xs text-muted">
+        <span className="h-px flex-1 bg-line" /> or <span className="h-px flex-1 bg-line" />
       </div>
       <GoogleSignInButton clientId={options.google_client_id} onCredential={handleGoogle} />
-      {googleError && <p role="alert" className="mt-3 text-center text-xs text-rose-400">{googleError}</p>}
+      {googleError && <p role="alert" className="mt-3 text-center text-xs text-contradicted-fg">{googleError}</p>}
     </div>
   ) : null
 
@@ -137,123 +139,65 @@ export default function Auth() {
     }
   }
 
-  const CheckIcon = ({ passed }: { passed: boolean }) => (
-    <div className="w-4 h-4 flex items-center justify-center shrink-0">
-      <AnimatePresence mode="wait">
-        {passed ? (
-          <motion.div
-            key="check"
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="dot"
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            <div className="w-1.5 h-1.5 rounded-full bg-slate-600" />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-
   const toggleMode = (mode: "login" | "signup") => {
     setIsLogin(mode === "login")
     setError(null)
-    // Optionally update the URL without full reload
-    window.history.pushState(null, "", `/${mode}`)
+    // update the URL without a full reload
+    window.history.pushState(null, "", `${((import.meta as any).env?.BASE_URL as string | undefined)?.replace(/\/$/, "") ?? ""}/${mode}`)
   }
 
+  const heading = (title: string, sub: string) => (
+    <>
+      <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
+      <p className="mb-6 mt-1.5 text-[13px] leading-relaxed text-muted">{sub}</p>
+    </>
+  )
+
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 10 }} 
-      animate={{ opacity: 1, y: 0 }} 
-      transition={{ duration: 0.35, ease: "easeOut" }}
-      className="app-shell-bg min-h-screen flex flex-col md:flex-row text-white font-sans"
-    >
-      {/* Left Column */}
-      <div className="flex-1 flex flex-col justify-center items-center p-6 sm:p-12 overflow-y-auto">
-        <div className="w-full max-w-sm">
-          <div className="flex justify-between items-center mb-6">
-            <Link to="/" className="inline-flex items-center text-xs font-medium text-slate-400 hover:text-white transition-colors">
-              <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back to home
-            </Link>
+    <div className="flex min-h-dvh flex-col bg-canvas lg:flex-row">
+      {/* Form column */}
+      <main className="flex flex-1 flex-col items-center justify-center px-4 py-10 sm:px-8">
+        <div className="w-full max-w-md">
+          <div className="mb-8 flex items-center justify-between">
+            <Link to="/" className="inline-flex items-center gap-1.5 rounded-md text-[13px] font-medium text-muted hover:text-ink"><ArrowLeft className="size-3.5" aria-hidden="true" /> Back to home</Link>
+            <span className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-[0.04em] text-brand">
+              <span className="grid size-7 place-items-center rounded-md bg-brand text-white"><ShieldCheck className="size-4" aria-hidden="true" /></span>
+              VERIFIN
+            </span>
           </div>
-          
-          {/* Slider Toggle */}
-          <div className="relative flex items-center p-1 bg-white/5 border border-white/10 rounded-xl mb-8 w-full">
-            <button
-              type="button"
-              onClick={() => toggleMode("login")}
-              className={`relative z-10 flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${isLogin ? 'text-white' : 'text-slate-400 hover:text-slate-300'}`}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => toggleMode("signup")}
-              className={`relative z-10 flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${!isLogin ? 'text-white' : 'text-slate-400 hover:text-slate-300'}`}
-            >
-              Sign Up
-            </button>
-            <div className="absolute inset-y-1 inset-x-1 flex pointer-events-none">
-              <motion.div 
-                layoutId="auth-slider"
-                className="w-1/2 bg-white/10 rounded-lg shadow-sm border border-white/10"
-                animate={{ x: isLogin ? "0%" : "100%" }}
-                transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              />
-            </div>
+
+          <div role="tablist" aria-label="Sign in or sign up" className="mb-6 grid grid-cols-2 gap-1 rounded-lg border border-line bg-subtle p-1">
+            {([["login", "Sign in"], ["signup", "Sign up"]] as const).map(([mode, label]) => {
+              const on = (mode === "login") === isLogin
+              return (
+                <button key={mode} type="button" role="tab" aria-selected={on} onClick={() => toggleMode(mode)}
+                  className={cn("rounded-md py-2 text-sm font-medium transition-[background-color,color,box-shadow]", on ? "bg-surface text-ink shadow-xs" : "text-muted hover:text-ink")}>
+                  {label}
+                </button>
+              )
+            })}
           </div>
-          
-          <div className="glass-strong border border-white/10 rounded-2xl p-8 shadow-2xl overflow-hidden relative">
-            <AnimatePresence mode="wait">
-              {isLogin ? (
-                <motion.div
-                  key="login-form"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {resetMode ? (
-                    <>
-                      <h1 className="text-2xl font-bold tracking-tight mb-2">Reset your password</h1>
-                      <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-                        We will email you a code, then you choose a new password.
-                      </p>
-                      <PasswordResetForm
-                        initialEmail={loginEmail}
-                        onCancel={() => setResetMode(false)}
-                        onDone={() => { setResetMode(false); setLoginMethod("password"); setLoginPassword(""); setError(null) }}
-                      />
-                    </>
-                  ) : (
-                  <>
-                  <h1 className="text-2xl font-bold tracking-tight mb-2">Welcome Back</h1>
-                  <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-                    Sign in to your organisation's workspace.
-                  </p>
-                  
+
+          <div className="rounded-xl border border-line bg-surface p-6 shadow-sm sm:p-8">
+            {isLogin ? (
+              resetMode ? (
+                <>
+                  {heading("Reset your password", "We will email you a code, then you choose a new password.")}
+                  <PasswordResetForm
+                    initialEmail={loginEmail}
+                    onCancel={() => setResetMode(false)}
+                    onDone={() => { setResetMode(false); setLoginMethod("password"); setLoginPassword(""); setError(null) }}
+                  />
+                </>
+              ) : (
+                <>
+                  {heading("Welcome back", "Sign in to your organisation's workspace.")}
+
                   {options?.email_otp && (
-                    <div className="mb-5 grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-white/[0.03] p-1 text-xs font-semibold" role="tablist">
+                    <div className="mb-5 grid grid-cols-2 gap-1 rounded-md border border-line bg-subtle p-0.5 text-[13px] font-medium" role="tablist" aria-label="Sign-in method">
                       {(["password", "code"] as const).map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          role="tab"
-                          aria-selected={loginMethod === m}
-                          onClick={() => { setLoginMethod(m); setError(null) }}
-                          className={`rounded-md py-1.5 transition-colors ${loginMethod === m ? "bg-white/10 text-white" : "text-slate-400 hover:text-slate-200"}`}
-                        >
+                        <button key={m} type="button" role="tab" aria-selected={loginMethod === m} onClick={() => { setLoginMethod(m); setError(null) }}
+                          className={cn("rounded-[5px] py-1.5 transition-colors", loginMethod === m ? "bg-surface text-ink shadow-xs" : "text-muted hover:text-ink")}>
                           {m === "password" ? "Password" : "Email code"}
                         </button>
                       ))}
@@ -263,218 +207,102 @@ export default function Auth() {
                   {loginMethod === "code" && options?.email_otp ? (
                     <EmailCodeForm onDone={() => navigate(destination, { replace: true })} />
                   ) : (
-                  <form onSubmit={handleLoginSubmit} className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Email Address</label>
-                      <Input 
-                        type="email" 
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                        placeholder="you@example.com" 
-                        className="h-11 bg-white/[0.03] border-white/10 focus-visible:ring-amber-500 text-sm" 
-                        required
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-semibold text-slate-300">Password</label>
-                        {options?.password_reset && (
-                          <button type="button" onClick={() => { setResetMode(true); setError(null) }} className="text-[11px] font-medium text-amber-400 hover:text-amber-300">
-                            Forgot password?
-                          </button>
-                        )}
+                    <form onSubmit={handleLoginSubmit} className="space-y-4">
+                      <Field label="Email address" htmlFor="login-email">
+                        <Input id="login-email" type="email" autoComplete="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="you@example.com" className="h-11" required />
+                      </Field>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <label htmlFor="login-password" className="block text-[13px] font-medium text-ink">Password</label>
+                          {options?.password_reset && (
+                            <button type="button" onClick={() => { setResetMode(true); setError(null) }} className="text-[13px] font-medium text-brand-2 hover:underline">Forgot password?</button>
+                          )}
+                        </div>
+                        <Input id="login-password" type="password" autoComplete="current-password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="••••••••" className="h-11" required />
                       </div>
-                      <Input 
-                        type="password" 
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        placeholder="••••••••" 
-                        className="h-11 bg-white/[0.03] border-white/10 focus-visible:ring-amber-500 text-sm" 
-                        required
-                      />
-                    </div>
-                    
-                    
-                    {error && <p role="alert" className="text-xs text-rose-400 mt-4">{error}</p>}
-                    <Button type="submit" disabled={isLoading} className="w-full h-11 text-sm font-bold mt-6 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border-none shadow-lg shadow-amber-500/20">
-                      {isLoading ? <Loader2 className="h-5 w-5 animate-spin text-black/70" /> : "Sign In"}
-                    </Button>
-                  </form>
+                      {error && <Notice tone="error">{error}</Notice>}
+                      <Button type="submit" variant="primary" size="lg" loading={isLoading} className="w-full">Sign in</Button>
+                    </form>
                   )}
                   {googleBlock}
-                  </>
-                  )}
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="signup-form"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <h1 className="text-2xl font-bold tracking-tight mb-2">Create Account</h1>
-                  <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-                    Creates a new organisation with you as its administrator.
-                  </p>
-                  
-                  <form onSubmit={handleSignupSubmit} className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Full Name</label>
-                      <Input 
-                        value={signupName}
-                        onChange={(e) => setSignupName(e.target.value)}
-                        placeholder="Jane Doe" 
-                        className="h-11 bg-white/[0.03] border-white/10 focus-visible:ring-amber-500 text-sm" 
-                        required
-                      />
+                </>
+              )
+            ) : (
+              <>
+                {heading("Create account", "Creates a new organisation with you as its administrator.")}
+                <form onSubmit={handleSignupSubmit} className="space-y-4">
+                  <Field label="Full name" htmlFor="signup-name">
+                    <Input id="signup-name" autoComplete="name" value={signupName} onChange={(e) => setSignupName(e.target.value)} placeholder="Jane Doe" className="h-11" required />
+                  </Field>
+                  <Field label="Email address" htmlFor="signup-email">
+                    <Input id="signup-email" type="email" autoComplete="email" value={signupEmail} onChange={(e) => { setSignupEmail(e.target.value); setCodeSent(false); setSignupCode("") }} placeholder="you@example.com" className="h-11" required />
+                  </Field>
+                  <Field label="Password" htmlFor="signup-password">
+                    <div className="relative">
+                      <Input id="signup-password" type={showSignupPassword ? "text" : "password"} autoComplete="new-password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} placeholder="••••••••" className="h-11 pr-11" required />
+                      <button type="button" onClick={() => setShowSignupPassword(!showSignupPassword)} aria-label={showSignupPassword ? "Hide password" : "Show password"} className="absolute right-1 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-md text-muted hover:text-ink">
+                        {showSignupPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
                     </div>
-                    
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Email Address</label>
-                      <Input 
-                        type="email" 
-                        value={signupEmail}
-                        onChange={(e) => { setSignupEmail(e.target.value); setCodeSent(false); setSignupCode("") }}
-                        placeholder="you@example.com" 
-                        className="h-11 bg-white/[0.03] border-white/10 focus-visible:ring-amber-500 text-sm" 
-                        required
-                      />
-                    </div>
-                    
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Password</label>
-                      <div className="relative">
-                        <Input 
-                          type={showSignupPassword ? "text" : "password"} 
-                          value={signupPassword}
-                          onChange={(e) => setSignupPassword(e.target.value)}
-                          placeholder="••••••••" 
-                          className="h-11 bg-white/[0.03] border-white/10 focus-visible:ring-amber-500 text-sm pr-10" 
-                          required
-                        />
-                        <button 
-                          type="button" 
-                          onClick={() => setShowSignupPassword(!showSignupPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
-                        >
-                          {showSignupPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    <ul className="space-y-0.5 pt-1.5 text-xs" aria-label="Password requirements">
+                      {([["At least 10 characters", rules.length], ["Contains a number", rules.number], ["Upper and lowercase letters", rules.upperLower]] as const).map(([label, ok]) => (
+                        <li key={label} className={cn(ok ? "text-supported-fg" : "text-muted")}>{ok ? "✓" : "•"} {label}</li>
+                      ))}
+                    </ul>
+                  </Field>
+                  <Field label="Confirm password" htmlFor="signup-confirm" error={signupConfirm && signupPassword !== signupConfirm ? "Passwords do not match" : undefined}>
+                    <Input id="signup-confirm" type="password" autoComplete="new-password" value={signupConfirm} onChange={(e) => setSignupConfirm(e.target.value)} placeholder="••••••••" className="h-11" aria-invalid={!!signupConfirm && signupPassword !== signupConfirm} required />
+                  </Field>
+
+                  {codeSent && (
+                    <div className="space-y-1.5 rounded-lg border border-line bg-canvas p-3.5">
+                      <label htmlFor="signup-code" className="block text-[13px] font-medium text-ink">6-digit code sent to {signupEmail.trim()}</label>
+                      <Input id="signup-code" value={signupCode} onChange={(e) => setSignupCode(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" className="h-11 text-center font-mono text-lg tracking-[0.4em]" autoFocus required />
+                      <div className="flex justify-between pt-1 text-xs">
+                        <span className="text-muted">Expires in 10 minutes</span>
+                        <button type="button" onClick={resendSignupCode} disabled={resendWait > 0 || isLoading} className="font-medium text-brand-2 hover:underline disabled:text-faint disabled:no-underline">
+                          {resendWait > 0 ? `Resend in ${resendWait}s` : "Resend code"}
                         </button>
                       </div>
                     </div>
-                    
-                    <div className="space-y-1.5 py-1">
-                      <div className={`flex items-center gap-2 text-xs ${rules.length ? "text-emerald-400/90" : "text-slate-400"}`}>
-                        <CheckIcon passed={rules.length} /> At least 10 characters
-                      </div>
-                      <div className={`flex items-center gap-2 text-xs ${rules.number ? "text-emerald-400/90" : "text-slate-400"}`}>
-                        <CheckIcon passed={rules.number} /> Contains a number
-                      </div>
-                      <div className={`flex items-center gap-2 text-xs ${rules.upperLower ? "text-emerald-400/90" : "text-slate-400"}`}>
-                        <CheckIcon passed={rules.upperLower} /> Upper and lowercase letters
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300">Confirm Password</label>
-                      <Input 
-                        type="password" 
-                        value={signupConfirm}
-                        onChange={(e) => setSignupConfirm(e.target.value)}
-                        placeholder="••••••••" 
-                        className="h-11 bg-white/[0.03] border-white/10 focus-visible:ring-amber-500 text-sm" 
-                        required
-                      />
-                      {signupConfirm && signupPassword !== signupConfirm && (
-                        <div className="text-[10px] text-rose-400 mt-1">Passwords do not match</div>
-                      )}
-                    </div>
-                    
-                    {codeSent && (
-                      <div className="space-y-1.5 rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-3">
-                        <label className="text-xs font-semibold text-slate-200">6-digit code sent to {signupEmail.trim()}</label>
-                        <Input
-                          value={signupCode}
-                          onChange={(e) => setSignupCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          placeholder="123456"
-                          className="h-11 bg-white/[0.03] border-white/10 focus-visible:ring-amber-500 text-center text-lg tracking-[0.4em] font-mono"
-                          autoFocus
-                          required
-                        />
-                        <div className="flex justify-between text-xs pt-1">
-                          <span className="text-slate-500">Expires in 10 minutes</span>
-                          <button type="button" onClick={resendSignupCode} disabled={resendWait > 0 || isLoading} className="text-amber-400 hover:text-amber-300 disabled:text-slate-600">
-                            {resendWait > 0 ? `Resend in ${resendWait}s` : "Resend code"}
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                  )}
 
-                    {error && <p role="alert" className="text-xs text-rose-400 mt-4">{error}</p>}
-                    <Button type="submit" disabled={isLoading || !allRulesPassed || (signupPassword !== signupConfirm && signupConfirm.length > 0) || (codeSent && signupCode.length < 6)} className="w-full h-11 text-sm font-bold mt-6 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border-none shadow-lg shadow-amber-500/20">
-                      {isLoading ? <Loader2 className="h-5 w-5 animate-spin text-black/70" /> : options?.registration_needs_code && !codeSent ? "Email me a verification code" : "Create Account"}
-                    </Button>
-                  </form>
-                  {googleBlock}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  {error && <Notice tone="error">{error}</Notice>}
+                  <Button type="submit" variant="primary" size="lg" loading={isLoading} disabled={!allRulesPassed || (signupPassword !== signupConfirm && signupConfirm.length > 0) || (codeSent && signupCode.length < 6)} className="w-full">
+                    {options?.registration_needs_code && !codeSent ? "Email me a verification code" : "Create account"}
+                  </Button>
+                </form>
+                {googleBlock}
+              </>
+            )}
           </div>
         </div>
-      </div>
-      
-      {/* Right Column */}
-      <div className="hidden md:flex flex-1 relative items-center justify-center p-12 overflow-hidden border-l border-white/10 bg-black/20">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(251,191,36,0.08),transparent_70%)]" />
-        
-        <div className="relative max-w-md w-full z-20">
-          {/* Floating Chips - Positioned far enough to not overlap text */}
-          <div className="absolute -right-8 -top-16 z-30">
-            <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 0 }}>
-              <div className="w-14 h-14 bg-[#141517] border border-white/10 shadow-2xl rounded-2xl flex items-center justify-center">
-                <ShieldCheck className="h-6 w-6 text-emerald-400" />
-              </div>
-            </motion.div>
-          </div>
-          
-          <div className="absolute -left-10 top-24 z-30">
-            <motion.div animate={{ y: [0, -10, 0] }} transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}>
-              <div className="w-12 h-12 bg-[#141517] border border-white/10 shadow-xl rounded-xl flex items-center justify-center">
-                <FileSearch className="h-5 w-5 text-amber-400" />
-              </div>
-            </motion.div>
-          </div>
-          
-          <div className="absolute right-12 -bottom-12 z-30">
-            <motion.div animate={{ y: [0, -6, 0] }} transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}>
-              <div className="w-16 h-16 bg-[#141517] border border-white/10 shadow-2xl rounded-2xl flex items-center justify-center">
-                <Cpu className="h-7 w-7 text-slate-300" />
-              </div>
-            </motion.div>
-          </div>
-          
-          <div className="glass border border-white/10 rounded-2xl p-6 shadow-[0_0_40px_rgba(0,0,0,0.5)] relative z-20 bg-black/40 backdrop-blur-xl">
-            <h3 className="text-lg font-bold text-white mb-2">Every verdict comes with its evidence</h3>
-            <p className="text-sm text-slate-400 mb-6">never a bare score.</p>
-            
-            <div className="border border-emerald-400/30 bg-emerald-500/10 rounded-xl p-5 relative overflow-hidden">
-              {/* Removed the large absolute ShieldCheck icon that was overlapping the text */}
-              <div className="flex justify-between items-center mb-3">
-                <div className="text-sm font-bold text-emerald-400 uppercase tracking-wide">Supported</div>
-                <div className="text-xs font-mono text-emerald-400/80 font-bold bg-emerald-500/10 px-2 py-1 rounded">entailment 0.96</div>
-              </div>
-              <p className="text-sm text-slate-300 leading-relaxed font-serif italic mb-4 relative z-10">
-                "Revenue increased by 12% in fiscal year 2025, driven by strong demand."
-              </p>
-              <div className="flex items-center gap-2 text-xs font-mono text-slate-500 border-t border-emerald-500/20 pt-3 relative z-10">
-                <FileSearch className="h-3.5 w-3.5" /> Source Document, p. 43
-              </div>
-            </div>
-          </div>
+      </main>
+
+      {/* Brand column: explains the verdicts, with no sample numbers */}
+      <aside className="on-navy hidden flex-1 flex-col justify-center bg-navy px-12 py-12 text-white lg:flex" aria-label="About VERIFIN">
+        <div className="mx-auto w-full max-w-md">
+          <FileSearch className="mb-6 size-8 text-sky" strokeWidth={1.5} aria-hidden="true" />
+          <h2 className="text-3xl font-semibold leading-tight tracking-tight">Trust through transparency.<br />Intelligence through evidence.</h2>
+          <p className="mt-4 text-[15px] leading-relaxed text-white/70">
+            VERIFIN checks every claim in an AI-written financial answer against the source document, and shows the evidence and the rule behind each verdict. Never a bare score.
+          </p>
+          <ul className="mt-8 space-y-3">
+            {VERDICT_ORDER.map((k) => {
+              const v = VERDICTS[k]
+              return (
+                <li key={k} className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/[0.04] p-3.5">
+                  <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md bg-white" style={{ color: v.color }}><v.Icon className="size-4" aria-hidden="true" /></span>
+                  <div>
+                    <div className="text-[13px] font-semibold">{v.label}</div>
+                    <div className="text-xs leading-relaxed text-white/65">{v.meaning}</div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
         </div>
-      </div>
-    </motion.div>
+      </aside>
+    </div>
   )
 }
