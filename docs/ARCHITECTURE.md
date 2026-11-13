@@ -77,6 +77,15 @@ before it supplies the comparison. A CONTRADICTED claim counts as a hallucinatio
 rate is contradicted claims over all claims. The page shows every chart as a table too, and the verdict colours were checked for
 colour-blind separation against the dark card surface.
 
+### Benchmark
+
+`GET /api/v1/benchmark/summary` (viewer and up) feeds the Benchmark page. It reads the evaluation harness's recorded test reports
+(`data/eval/results/final/report_test.json` and `baselines/report_test.json`) and `app/services/benchmark_service.py` reshapes them:
+the systems compared (VERIFIN, the NLI model alone, a number-match heuristic, a 7B language model with and without evidence), the
+confusion matrix, per-class scores, accuracy by kind of claim, calibration and latency. Nothing is recomputed or re-run, so the page
+shows exactly what the [model card](MODEL_CARD.md) reports. A baseline that was not run is left out rather than invented, and the
+endpoint answers 404 when the report files are absent (the Docker image does not copy `data/eval`, so a container shows an empty state).
+
 ### Background jobs
 
 `POST /verification/jobs` returns `202` with a status URL immediately. An in-process `JobRunner` runs jobs under a bounded

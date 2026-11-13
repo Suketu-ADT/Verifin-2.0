@@ -15,6 +15,7 @@ import Auth from "./pages/Auth"
 import Admin from "./pages/Admin"
 import Account from "./pages/Account"
 import Analytics from "./pages/Analytics"
+import Benchmark from "./pages/Benchmark"
 import { AuthProvider, RequireAuth, RequireRole } from "./lib/AuthContext"
 
 function App() {
@@ -39,6 +40,7 @@ function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/account" element={<Account />} />
           <Route path="/analytics" element={<Analytics />} />
+          <Route path="/benchmark" element={<Benchmark />} />
           <Route path="/system" element={<SystemStatus />} />
           <Route path="/admin" element={<RequireRole minimum="admin"><Admin /></RequireRole>} />
         </Route>

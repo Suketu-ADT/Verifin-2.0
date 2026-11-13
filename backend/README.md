@@ -148,6 +148,7 @@ The backend implements the exact contract required by `frontend/src/lib/api.ts`:
 | `GET` | `/api/verification/{id}/results` | Fetch session & claim status | `VerificationResultResponse` |
 | `POST` | `/api/demo/run` | Execute canned reference demo | `DemoRunResponse` |
 | `GET` | `/api/v1/analytics/overview?days=30` | Aggregate statistics for the Analytics page (v1 only; 1-365 days) | `AnalyticsOverview` |
+| `GET` | `/api/v1/benchmark/summary` | Recorded held-out evaluation results for the Benchmark page (v1 only; 404 if the reports are absent) | `BenchmarkSummary` |
 
 ---
 

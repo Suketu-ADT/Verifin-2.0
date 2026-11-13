@@ -2,7 +2,7 @@ import { motion } from "framer-motion"
 import { Link, useLocation } from "react-router-dom"
 import { 
   FileSearch, History, Search, Activity, Settings, FileText,
-  LayoutDashboard, BarChart3, X, ShieldCheck, Shield, Sparkles, Layers, UserCog, UserCircle,
+  LayoutDashboard, BarChart3, Gauge, X, ShieldCheck, Shield, Sparkles, Layers, UserCog, UserCircle,
 } from "lucide-react"
 import { useAuth } from "../../lib/AuthContext"
 
@@ -22,6 +22,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: "Evidence Explorer", href: "/evidence", icon: Search },
     { name: "History", href: "/history", icon: History },
     { name: "Analytics", href: "/analytics", icon: BarChart3 },
+    { name: "Benchmark", href: "/benchmark", icon: Gauge },
     { name: "Reports", href: "/reports", icon: FileText },
     { name: "System Status", href: "/system", icon: Activity },
     { name: "Settings", href: "/settings", icon: Settings },

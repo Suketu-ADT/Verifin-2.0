@@ -792,3 +792,41 @@ export interface AnalyticsOverview {
 export async function getAnalyticsOverview(days: number): Promise<AnalyticsOverview> {
   return (await api.get<AnalyticsOverview>('/api/v1/analytics/overview', { params: { days } })).data;
 }
+
+// ---------------------------------------------------------------------------
+// Benchmark (recorded evaluation results)
+// ---------------------------------------------------------------------------
+
+export interface BenchmarkInterval {
+  value: number;
+  low: number;
+  high: number;
+}
+
+export interface BenchmarkSystem {
+  key: string;
+  label: string;
+  note: string;
+  claims: number;
+  accuracy: BenchmarkInterval;
+  macro_f1: BenchmarkInterval;
+  latency_mean_s: number;
+}
+
+export interface BenchmarkSummary {
+  split: string;
+  claims: number;
+  classes: string[];
+  systems: BenchmarkSystem[];
+  per_class: { label: string; precision: number; recall: number; f1: number; support: number }[];
+  confusion: number[][];
+  flag_any_unsupported: { precision: number; recall: number; false_positive_rate: number };
+  subtypes: { name: string; claims: number; accuracy: number }[];
+  retrieval: { n: number; recall_at_k: number; mrr: number };
+  calibration: { ece: number; bins: { bin: string; claims: number; confidence: number; accuracy: number }[] };
+  latency_s: { mean: number; p50: number; p95: number };
+}
+
+export async function getBenchmarkSummary(): Promise<BenchmarkSummary> {
+  return (await api.get<BenchmarkSummary>('/api/v1/benchmark/summary')).data;
+}
