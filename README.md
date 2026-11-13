@@ -64,8 +64,8 @@ The held-out test split was run again from scratch to check that the numbers rep
 
 ```bash
 cd backend
-python -m eval.run --split test --systems verifin,verifin:e2e,verifin:nli=base,number_match --run second_test
-python -m eval.report --split test --systems verifin,verifin:e2e,verifin:nli=base,number_match --run second_test
+python -m eval.run --split test --systems verifin,verifin:e2e,verifin:nli=base,number_match,llm_norag:qwen2.5:7b,llm_rag:qwen2.5:7b --run second_test
+python -m eval.report --split test --systems verifin,verifin:e2e,verifin:nli=base,number_match,llm_norag:qwen2.5:7b,llm_rag:qwen2.5:7b --run second_test
 ```
 
 | System | Accuracy [95% CI] | Macro-F1 [95% CI] | Supported F1 | Contradicted F1 | Unverifiable F1 | McNemar p vs VERIFIN |
@@ -75,6 +75,8 @@ python -m eval.report --split test --systems verifin,verifin:e2e,verifin:nli=bas
 | VERIFIN with larger NLI (deberta-v3-base) | 93.3 [90.0, 96.2] | 93.7 [90.3, 96.5] | 93.3 | 92.6 | 95.1 | 0.38 |
 | VERIFIN, raw NLI output only | 75.8 | 66.8 | n/a | n/a | n/a | < 0.001 |
 | `number_match` heuristic (no ML) | 81.7 [76.2, 86.7] | 79.7 [73.2, 85.1] | 86.9 | 77.3 | 75.0 | < 0.001 |
+| LLM judge with VERIFIN's retrieved evidence (Qwen 2.5 7B) | 83.8 [78.8, 87.9] | 82.2 [76.8, 86.7] | 89.9 | 79.7 | 76.9 | < 0.001 |
+| LLM judge, no retrieval (Qwen 2.5 7B) | 20.0 [15.0, 25.0] | 14.6 [10.5, 18.6] | 12.0 | 2.2 | 29.5 | < 0.001 |
 
 | System | Page Recall@3 | MRR | ECE | Mean s/claim | p95 s/claim | Errors |
 |---|---|---|---|---|---|---|
@@ -82,11 +84,14 @@ python -m eval.report --split test --systems verifin,verifin:e2e,verifin:nli=bas
 | VERIFIN end-to-end | 92.0 | 0.843 | 0.197 | 0.79 | 1.40 | 0 |
 | VERIFIN with larger NLI | 95.0 | 0.885 | 0.172 | 1.17 | 1.63 | 0 |
 | `number_match` | 99.5 | 0.972 | n/a | 0.02 | 0.03 | 0 |
+| LLM judge with retrieved evidence | 95.0 | 0.885 | n/a | 7.48 | 11.30 | 0 |
+| LLM judge, no retrieval | n/a | n/a | n/a | 4.42 | 4.94 | 0 |
 
-- **Reproduces exactly.** All 960 verdicts (4 systems x 240 claims) are identical to the first run (pipeline 4.0); VERIFIN is also identical to the 4.2 run. Flagging is unchanged: any-unsupported precision 93.4%, recall 97.7%, false-positive rate 8.3%; contradicted-only precision 64.2%, recall 96.7%.
+- **Reproduces exactly.** All 1,440 verdicts (6 systems x 240 claims) are identical to the first run (pipeline 4.0); VERIFIN is also identical to the 4.2 run. Flagging is unchanged: any-unsupported precision 93.4%, recall 97.7%, false-positive rate 8.3%; contradicted-only precision 64.2%, recall 96.7%.
 - **Latency differs, accuracy does not.** The first table's 1.0 s (1.6 s with the larger NLI model) was measured on a different machine load; this run measured 0.78 s (1.17 s). Wall-clock time of the run: 3.1 min (VERIFIN), 3.2 min (end-to-end), 4.7 min (larger NLI), 0.1 min (`number_match`), CPU only.
-- **What was not re-run:** the two Qwen 2.5 7B LLM-judge baselines (about 48 minutes each on CPU), the dev split and the reranker and NLI-size studies. Their numbers below are from the original runs.
-- Because the system is deterministic given the same inputs (no language model in the verification path), an identical result is the expected outcome; it shows the code, models and cached corpus are reproducible, not that the system generalises beyond these six reports.
+- **The two LLM-judge baselines were genuinely re-run too.** The evaluation tool caches model answers on disk, so a first attempt finished in under a minute from that cache and was thrown away. The final run used an empty cache: 480 fresh Qwen 2.5 7B calls at temperature 0, 4.4 s per claim without retrieval and 7.5 s with it, against 8.9 s and 12.4 s in the original run on a more heavily loaded machine. All 480 labels match the original baseline run, so the macro-F1 figures (14.6 and 82.2), the any-unsupported flagging (precision 91.6%, recall 91.6%, false-positive rate 10.1%) and the significance against VERIFIN (p < 0.001) are unchanged. At this latency the judge with evidence is about 10 times slower than VERIFIN (7.5 s against 0.78 s).
+- **Still not re-run:** the dev split and the reranker and NLI-size studies; their numbers below are from the original runs.
+- Because VERIFIN is deterministic given the same inputs (no language model in its verification path) and the judges run at temperature 0, identical results are the expected outcome; it shows the code, models and cached corpus are reproducible, not that the system generalises beyond these six reports.
 
 ### Method
 

@@ -11,6 +11,8 @@
 | verifin:nli=base | 240 | 93.3 [90.0, 96.2] | 93.7 [90.3, 96.5] | 93.3 | 92.6 | 95.1 | 0.375 |
 | verifin:nli=base [raw NLI] | 240 | 78.3 [72.9, 83.8] | 71.0 [64.2, 77.3] | 90.2 | 76.9 | 45.7 | 0.000 |
 | number_match | 240 | 81.7 [76.2, 86.7] | 79.7 [73.2, 85.1] | 86.9 | 77.3 | 75.0 | 0.000 |
+| llm_norag:qwen2.5:7b | 240 | 20.0 [15.0, 25.0] | 14.6 [10.5, 18.6] | 12.0 | 2.2 | 29.5 | 0.000 |
+| llm_rag:qwen2.5:7b | 240 | 83.8 [78.8, 87.9] | 82.2 [76.8, 86.7] | 89.9 | 79.7 | 76.9 | 0.000 |
 
 `p vs ref` is an exact McNemar test against `verifin` on the same claims.
 
@@ -32,22 +34,26 @@
 | verifin:nli=base [raw NLI] | any unsupported | 91.0 | 93.1 | 92.1 | 11.0 |
 | number_match | contradicted only | 59.8 | 73.6 | 66.0 | 30.2 |
 | number_match | any unsupported | 94.6 | 80.9 | 87.2 | 5.5 |
+| llm_norag:qwen2.5:7b | contradicted only | 38.8 | 98.9 | 55.7 | 95.3 |
+| llm_norag:qwen2.5:7b | any unsupported | 56.0 | 99.2 | 71.6 | 93.6 |
+| llm_rag:qwen2.5:7b | contradicted only | 61.1 | 87.9 | 72.1 | 34.2 |
+| llm_rag:qwen2.5:7b | any unsupported | 91.6 | 91.6 | 91.6 | 10.1 |
 
 ## Accuracy by error type
 
-| Label / subtype | verifin | verifin [raw NLI] | verifin:e2e | verifin:e2e [raw NLI] | verifin:nli=base | verifin:nli=base [raw NLI] | number_match |
-|---|---|---|---|---|---|---|---|
-| CONTRADICTED/direction_flip | 100.0 (n=8) | 100.0 (n=8) | 100.0 (n=8) | 100.0 (n=8) | 100.0 (n=8) | 100.0 (n=8) | 0.0 (n=8) |
-| CONTRADICTED/number_change | 96.3 (n=54) | 85.2 (n=54) | 96.3 (n=54) | 87.0 (n=54) | 94.4 (n=54) | 88.9 (n=54) | 94.4 (n=54) |
-| CONTRADICTED/period_swap | 100.0 (n=14) | 78.6 (n=14) | 100.0 (n=14) | 78.6 (n=14) | 100.0 (n=14) | 64.3 (n=14) | 85.7 (n=14) |
-| CONTRADICTED/unit_swap | 93.3 (n=15) | 40.0 (n=15) | 86.7 (n=15) | 40.0 (n=15) | 93.3 (n=15) | 66.7 (n=15) | 0.0 (n=15) |
-| SUPPORTED/paraphrase | 83.9 (n=31) | 90.3 (n=31) | 83.9 (n=31) | 87.1 (n=31) | 80.6 (n=31) | 87.1 (n=31) | 80.6 (n=31) |
-| SUPPORTED/verbatim | 94.9 (n=78) | 91.0 (n=78) | 93.6 (n=78) | 88.5 (n=78) | 93.6 (n=78) | 89.7 (n=78) | 100.0 (n=78) |
-| UNVERIFIABLE/acquisition | 100.0 (n=10) | 10.0 (n=10) | 100.0 (n=10) | 10.0 (n=10) | 100.0 (n=10) | 10.0 (n=10) | 50.0 (n=10) |
-| UNVERIFIABLE/appointment | 100.0 (n=8) | 25.0 (n=8) | 100.0 (n=8) | 25.0 (n=8) | 100.0 (n=8) | 0.0 (n=8) | 75.0 (n=8) |
-| UNVERIFIABLE/bond | 87.5 (n=8) | 25.0 (n=8) | 87.5 (n=8) | 25.0 (n=8) | 87.5 (n=8) | 62.5 (n=8) | 100.0 (n=8) |
-| UNVERIFIABLE/facility | 100.0 (n=7) | 57.1 (n=7) | 100.0 (n=7) | 57.1 (n=7) | 100.0 (n=7) | 71.4 (n=7) | 100.0 (n=7) |
-| UNVERIFIABLE/penalty | 100.0 (n=7) | 42.9 (n=7) | 100.0 (n=7) | 42.9 (n=7) | 100.0 (n=7) | 71.4 (n=7) | 57.1 (n=7) |
+| Label / subtype | verifin | verifin [raw NLI] | verifin:e2e | verifin:e2e [raw NLI] | verifin:nli=base | verifin:nli=base [raw NLI] | number_match | llm_norag:qwen2.5:7b | llm_rag:qwen2.5:7b |
+|---|---|---|---|---|---|---|---|---|---|
+| CONTRADICTED/direction_flip | 100.0 (n=8) | 100.0 (n=8) | 100.0 (n=8) | 100.0 (n=8) | 100.0 (n=8) | 100.0 (n=8) | 0.0 (n=8) | 0.0 (n=8) | 87.5 (n=8) |
+| CONTRADICTED/number_change | 96.3 (n=54) | 85.2 (n=54) | 96.3 (n=54) | 87.0 (n=54) | 94.4 (n=54) | 88.9 (n=54) | 94.4 (n=54) | 1.9 (n=54) | 81.5 (n=54) |
+| CONTRADICTED/period_swap | 100.0 (n=14) | 78.6 (n=14) | 100.0 (n=14) | 78.6 (n=14) | 100.0 (n=14) | 64.3 (n=14) | 85.7 (n=14) | 0.0 (n=14) | 50.0 (n=14) |
+| CONTRADICTED/unit_swap | 93.3 (n=15) | 40.0 (n=15) | 86.7 (n=15) | 40.0 (n=15) | 93.3 (n=15) | 66.7 (n=15) | 0.0 (n=15) | 0.0 (n=15) | 33.3 (n=15) |
+| SUPPORTED/paraphrase | 83.9 (n=31) | 90.3 (n=31) | 83.9 (n=31) | 87.1 (n=31) | 80.6 (n=31) | 87.1 (n=31) | 80.6 (n=31) | 9.7 (n=31) | 90.3 (n=31) |
+| SUPPORTED/verbatim | 94.9 (n=78) | 91.0 (n=78) | 93.6 (n=78) | 88.5 (n=78) | 93.6 (n=78) | 89.7 (n=78) | 100.0 (n=78) | 5.1 (n=78) | 89.7 (n=78) |
+| UNVERIFIABLE/acquisition | 100.0 (n=10) | 10.0 (n=10) | 100.0 (n=10) | 10.0 (n=10) | 100.0 (n=10) | 10.0 (n=10) | 50.0 (n=10) | 100.0 (n=10) | 100.0 (n=10) |
+| UNVERIFIABLE/appointment | 100.0 (n=8) | 25.0 (n=8) | 100.0 (n=8) | 25.0 (n=8) | 100.0 (n=8) | 0.0 (n=8) | 75.0 (n=8) | 100.0 (n=8) | 100.0 (n=8) |
+| UNVERIFIABLE/bond | 87.5 (n=8) | 25.0 (n=8) | 87.5 (n=8) | 25.0 (n=8) | 87.5 (n=8) | 62.5 (n=8) | 100.0 (n=8) | 100.0 (n=8) | 100.0 (n=8) |
+| UNVERIFIABLE/facility | 100.0 (n=7) | 57.1 (n=7) | 100.0 (n=7) | 57.1 (n=7) | 100.0 (n=7) | 71.4 (n=7) | 100.0 (n=7) | 100.0 (n=7) | 100.0 (n=7) |
+| UNVERIFIABLE/penalty | 100.0 (n=7) | 42.9 (n=7) | 100.0 (n=7) | 42.9 (n=7) | 100.0 (n=7) | 71.4 (n=7) | 57.1 (n=7) | 100.0 (n=7) | 100.0 (n=7) |
 
 ## Retrieval, calibration and latency
 
@@ -60,6 +66,8 @@
 | verifin:nli=base | 95.0 | 0.885 | 0.172 | 1.17 | 1.63 | 0 |
 | verifin:nli=base [raw NLI] | 95.0 | 0.885 | 0.172 | 1.17 | 1.63 | 0 |
 | number_match | 99.5 | 0.972 | - | 0.02 | 0.03 | 0 |
+| llm_norag:qwen2.5:7b | - | - | - | 4.42 | 4.94 | 0 |
+| llm_rag:qwen2.5:7b | 95.0 | 0.885 | - | 7.48 | 11.30 | 0 |
 
 ## Confusion matrices (rows = truth, columns = prediction)
 
@@ -118,3 +126,19 @@
 | SUPPORTED | 103 | 0 | 6 |
 | CONTRADICTED | 24 | 63 | 4 |
 | UNVERIFIABLE | 1 | 9 | 30 |
+
+**llm_norag:qwen2.5:7b**
+
+| truth \ pred | SUPPORTED | CONTRADICTED | UNVERIFIABLE |
+|---|---|---|---|
+| SUPPORTED | 7 | 0 | 102 |
+| CONTRADICTED | 1 | 1 | 89 |
+| UNVERIFIABLE | 0 | 0 | 40 |
+
+**llm_rag:qwen2.5:7b**
+
+| truth \ pred | SUPPORTED | CONTRADICTED | UNVERIFIABLE |
+|---|---|---|---|
+| SUPPORTED | 98 | 4 | 7 |
+| CONTRADICTED | 11 | 63 | 17 |
+| UNVERIFIABLE | 0 | 0 | 40 |
