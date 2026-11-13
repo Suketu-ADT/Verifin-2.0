@@ -36,7 +36,7 @@ LLM OUTPUT ➔ CLAIM DECOMPOSITION ➔ HYBRID EVIDENCE RETRIEVAL (dense + BM25) 
 
 ## 📊 Evaluation Results
 
-> **Status:** the **test split (240 claims) was scored exactly once**, after the system, thresholds and defaults were frozen using the dev split only. The test results are in the first table below. Development-split numbers further down were used to find and fix errors, so they are slightly optimistic; the held-out test numbers are the ones to quote.
+> **Status:** the **test split (240 claims) was first scored once**, after the system, thresholds and defaults were frozen using the dev split only, and has since been re-run unchanged twice as a regression check (pipeline 4.2, then the [second test](#second-test-2026-11-13) below). Nothing was tuned on it. The test results are in the first table below. Development-split numbers further down were used to find and fix errors, so they are slightly optimistic; the held-out test numbers are the ones to quote.
 
 ### Held-out test results (n = 240; 109 supported / 91 contradicted / 40 unverifiable)
 
@@ -57,6 +57,36 @@ LLM OUTPUT ➔ CLAIM DECOMPOSITION ➔ HYBRID EVIDENCE RETRIEVAL (dense + BM25) 
 - Weakest areas on test: paraphrased supported claims (83.9%) and unit swaps (93.3%). All five unverifiable subtypes score 87.5-100%.
 - The original pre-improvement system (v0) was not scored on test because its code no longer exists in that form; its dev-split numbers are shown below for the improvement history.
 - Both LLM-judge baselines were also run once on the test split (see "Baselines, test split" below): with the same retrieved evidence Qwen 2.5 7B scores 82.2 macro-F1 against 95.2 for VERIFIN (McNemar p < 0.001).
+
+### Second test (2026-11-13)
+
+The held-out test split was run again from scratch to check that the numbers reproduce after the later changes (frontend redesign, configurable claim-extraction limits, Ollama context and keep-alive settings). Pipeline `verifin-pipeline/4.2`, same 240 claims, no thresholds, rules or defaults changed, nothing tuned on test. Raw per-claim results: `data/eval/results/second_test/`.
+
+```bash
+cd backend
+python -m eval.run --split test --systems verifin,verifin:e2e,verifin:nli=base,number_match --run second_test
+python -m eval.report --split test --systems verifin,verifin:e2e,verifin:nli=base,number_match --run second_test
+```
+
+| System | Accuracy [95% CI] | Macro-F1 [95% CI] | Supported F1 | Contradicted F1 | Unverifiable F1 | McNemar p vs VERIFIN |
+|---|---|---|---|---|---|---|
+| **VERIFIN (default)** | **94.6 [91.7, 97.5]** | **95.2 [92.3, 97.7]** | 94.3 | 93.6 | 97.5 | n/a |
+| VERIFIN end-to-end (real claim extractor) | 93.8 [90.4, 96.7] | 94.2 [90.9, 97.0] | 93.8 | 92.6 | 96.3 | 0.63 |
+| VERIFIN with larger NLI (deberta-v3-base) | 93.3 [90.0, 96.2] | 93.7 [90.3, 96.5] | 93.3 | 92.6 | 95.1 | 0.38 |
+| VERIFIN, raw NLI output only | 75.8 | 66.8 | n/a | n/a | n/a | < 0.001 |
+| `number_match` heuristic (no ML) | 81.7 [76.2, 86.7] | 79.7 [73.2, 85.1] | 86.9 | 77.3 | 75.0 | < 0.001 |
+
+| System | Page Recall@3 | MRR | ECE | Mean s/claim | p95 s/claim | Errors |
+|---|---|---|---|---|---|---|
+| VERIFIN | 95.0 | 0.885 | 0.183 | 0.78 | 1.10 | 0 |
+| VERIFIN end-to-end | 92.0 | 0.843 | 0.197 | 0.79 | 1.40 | 0 |
+| VERIFIN with larger NLI | 95.0 | 0.885 | 0.172 | 1.17 | 1.63 | 0 |
+| `number_match` | 99.5 | 0.972 | n/a | 0.02 | 0.03 | 0 |
+
+- **Reproduces exactly.** All 960 verdicts (4 systems x 240 claims) are identical to the first run (pipeline 4.0); VERIFIN is also identical to the 4.2 run. Flagging is unchanged: any-unsupported precision 93.4%, recall 97.7%, false-positive rate 8.3%; contradicted-only precision 64.2%, recall 96.7%.
+- **Latency differs, accuracy does not.** The first table's 1.0 s (1.6 s with the larger NLI model) was measured on a different machine load; this run measured 0.78 s (1.17 s). Wall-clock time of the run: 3.1 min (VERIFIN), 3.2 min (end-to-end), 4.7 min (larger NLI), 0.1 min (`number_match`), CPU only.
+- **What was not re-run:** the two Qwen 2.5 7B LLM-judge baselines (about 48 minutes each on CPU), the dev split and the reranker and NLI-size studies. Their numbers below are from the original runs.
+- Because the system is deterministic given the same inputs (no language model in the verification path), an identical result is the expected outcome; it shows the code, models and cached corpus are reproducible, not that the system generalises beyond these six reports.
 
 ### Method
 
@@ -225,7 +255,7 @@ cd backend
 python -m eval.build_dataset                                   # rebuild the dataset (needs Ollama + qwen2.5:7b)
 python -m eval.run --split dev --systems verifin --run v4       # score a system
 python -m eval.report --split dev --systems verifin --run v4    # tables + CI + McNemar
-python -m pytest                                                # 279 tests pass, 1 skipped
+python -m pytest                                                # 392 tests pass, 1 skipped
 python ../scripts/probe_report.py http://127.0.0.1:8000         # 24-claim table probe (needs a running API)
 ```
 

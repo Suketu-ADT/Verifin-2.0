@@ -38,6 +38,7 @@ Frontend and documentation only. No backend, API contract, authentication or ver
 
 ### Documentation
 
+- README "Second test (2026-11-13)": the held-out test split was re-run unchanged on pipeline 4.2 (`data/eval/results/second_test/`); all 960 verdicts match the first run (VERIFIN 95.2 macro-F1, 94.6% accuracy). LLM-judge baselines and the dev split were not re-run.
 - README "Design Philosophy" rewritten (vision, principles, colour system, typography, motion, responsiveness, accessibility).
 - New [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md): tokens, scales, motion, component catalogue, chart conventions, colour-blind note, accessibility and responsive rules, how to add a page or component, demo build recipe.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): new Frontend section (routes, shell, state and auth, API layer, charts, build); [frontend/README.md](frontend/README.md) replaced the Vite template text.
