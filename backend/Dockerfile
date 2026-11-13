@@ -17,7 +17,9 @@ ENV PATH="/opt/venv/bin:$PATH" \
     HF_HOME=/opt/hf-cache TRANSFORMERS_OFFLINE=1 HF_HUB_OFFLINE=1 \
     ENVIRONMENT=production DEBUG=false UPLOAD_DIR=/data/uploads
 
+# zlib1g is listed so the build takes the security-fixed version (CVE-2026-76844, CVE-2026-85091) when the base image is older.
 RUN apt-get update \
+ && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
  && apt-get install -y --no-install-recommends tesseract-ocr libgomp1 \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --system --uid 10001 --create-home verifin \
