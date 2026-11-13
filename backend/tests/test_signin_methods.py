@@ -32,6 +32,8 @@ def secured_app(monkeypatch):
     monkeypatch.setattr(settings, "jwt_secret", "test-secret-" + "x" * 32)
     monkeypatch.setattr(settings, "rate_limit_enabled", False)
     monkeypatch.setattr(settings, "google_client_id", CLIENT_ID)
+    for name in ("smtp_host", "smtp_username", "smtp_password", "smtp_from"):  # never use a developer's real mail settings
+        monkeypatch.setattr(settings, name, None)
     monkeypatch.setattr(signin, "_google_signing_key", lambda credential: KEY.public_key())
     auth_api.reset_otp_limits()
     yield

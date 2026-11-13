@@ -27,6 +27,7 @@ from app.repositories.api_key_repository import ApiKeyRepository
 from app.repositories.otp_repository import OtpRepository
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import audit
+from app.services.email_templates import sign_in_code_email
 from app.services.mailer import send_email, smtp_configured
 from app.services.signin import GoogleTokenError, code_matches, hash_code, new_code, verify_google_credential
 from app.security.passwords import DUMMY_HASH, hash_password, verify_password
@@ -200,11 +201,9 @@ def reset_otp_limits() -> None:
 
 
 def _deliver_code(email: str, code: str) -> None:
-    subject = "Your VERIFIN sign-in code"
-    body = (f"Your VERIFIN sign-in code is {code}.\n\nIt works once and expires in {settings.otp_ttl_minutes} minutes. "
-            "If you did not ask for it, you can ignore this email.")
     if smtp_configured():
-        send_email(email, subject, body)
+        subject, text, html = sign_in_code_email(code, settings.otp_ttl_minutes)
+        send_email(email, subject, text, html)
     else:  # development only: _otp_available() refuses this branch in production
         logger.warning(f"[development] sign-in code for {email}: {code} (SMTP is not configured, so nothing was emailed)")
 

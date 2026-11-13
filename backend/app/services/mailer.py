@@ -21,8 +21,8 @@ def smtp_configured() -> bool:
     return bool(settings.smtp_host and (settings.smtp_from or settings.smtp_username))
 
 
-def send_email(to: str, subject: str, text: str) -> bool:
-    """Send a plain-text message. Returns False (and logs why) instead of raising, so a mail outage never breaks a request."""
+def send_email(to: str, subject: str, text: str, html: str | None = None) -> bool:
+    """Send a message (plain text, plus an HTML alternative when given). Returns False (and logs why) instead of raising, so a mail outage never breaks a request."""
     if not smtp_configured():
         logger.warning("Email not sent: SMTP is not configured.")
         return False
@@ -31,6 +31,8 @@ def send_email(to: str, subject: str, text: str) -> bool:
     message["To"] = to
     message["Subject"] = subject
     message.set_content(text)
+    if html:
+        message.add_alternative(html, subtype="html")
     try:
         context = ssl.create_default_context()
         if settings.smtp_ssl:
