@@ -40,6 +40,7 @@ export default function LandingPage() {
         </div>
       </header>
 
+      <main id="main">
       {/* Hero */}
       <section className="border-b border-line bg-surface">
         <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:py-24">
@@ -132,6 +133,7 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+      </main>
 
       <footer className="bg-navy py-8 text-white/70">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 text-xs sm:px-6 md:flex-row">

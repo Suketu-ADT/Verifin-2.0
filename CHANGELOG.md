@@ -2,6 +2,17 @@
 
 Newest first. Only user-visible changes and changes to how the project is built or documented are listed.
 
+## Unreleased: page speed, landmark and robots.txt fixes (2026-11-14)
+
+Fixes from a Lighthouse run (mobile, simulated slow connection) of the landing page served by the API. Measured again with the same tool on the rebuilt app: performance 0.56 to 0.95, accessibility 0.98 to 1.00, SEO 0.91 to 1.00; first contentful paint 10.7 s to 2.3 s, largest contentful paint 11.0 s to 2.4 s. Best practices stays at 0.96.
+
+- Every page except the landing page is loaded on demand (`React.lazy`). The entry script went from about 1.56 MB to 384 KB (121 KB compressed); heavy pages (charts, PDF viewer) load only when opened.
+- The API now compresses the built interface's text files with gzip when the browser accepts it and sends `Cache-Control: public, max-age=31536000, immutable` for the hashed files under `assets/` and `no-cache` for the shell, so repeat visits download nothing.
+- If a page's file cannot be loaded (for example a tab left open across a new deployment), the app shows "This page could not be loaded" with a reload button instead of a blank screen, and other pages stay reachable. gzip is only used when the browser's `Accept-Encoding` really allows it (`gzip;q=0` is honoured).
+- The landing page has a `<main>` landmark.
+- New `frontend/public/robots.txt`; before, `/robots.txt` returned the app's HTML page.
+- Not changed: signed-out visitors still see one 401 in the browser console, from the sign-in check (`/api/v1/auth/me`); the call is needed so that local mode without authentication opens straight into the app. Source maps for the production bundle are not published.
+
 ## Unreleased: interface redesign and motion polish (2026-11-13)
 
 ### Backend: draft-from-document limits are settings
@@ -49,4 +60,3 @@ Frontend and documentation only. No backend, API contract, authentication or ver
 
 - Report figures in `docs/report/` still show the previous interface and were not touched.
 - A real screen reader, a real OS high-contrast theme and a physical print of the results page were not checked by a person (keyboard, forced-colours and print behaviour were checked with browser emulation).
-- The main JavaScript chunk is about 1.5 MB; code-splitting is not done.
