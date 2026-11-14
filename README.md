@@ -62,10 +62,14 @@ LLM OUTPUT ➔ CLAIM DECOMPOSITION ➔ HYBRID EVIDENCE RETRIEVAL (dense + BM25) 
 
 The held-out test split was run again from scratch to check that the numbers reproduce after the later changes (frontend redesign, configurable claim-extraction limits, Ollama context and keep-alive settings). Pipeline `verifin-pipeline/4.2`, same 240 claims, no thresholds, rules or defaults changed, nothing tuned on test. Raw per-claim results: `data/eval/results/second_test/`.
 
+The two LLM-judge systems answer from an on-disk cache (`data/eval/llm_cache`, which also holds the dataset-building paraphrases) whenever a matching prompt exists, so the command below would replay old answers instead of making fresh model calls. For a genuine re-run, move that folder aside first and put it back afterwards. Use a new `--run` name, because a run resumes and skips claims already scored under the same name:
+
 ```bash
+mv data/eval/llm_cache data/eval/llm_cache.bak     # judges now make fresh Ollama calls (qwen2.5:7b), about 35 minutes on CPU
 cd backend
-python -m eval.run --split test --systems verifin,verifin:e2e,verifin:nli=base,number_match,llm_norag:qwen2.5:7b,llm_rag:qwen2.5:7b --run second_test
-python -m eval.report --split test --systems verifin,verifin:e2e,verifin:nli=base,number_match,llm_norag:qwen2.5:7b,llm_rag:qwen2.5:7b --run second_test
+python -m eval.run --split test --systems verifin,verifin:e2e,verifin:nli=base,number_match,llm_norag:qwen2.5:7b,llm_rag:qwen2.5:7b --run second_test_rerun
+python -m eval.report --split test --systems verifin,verifin:e2e,verifin:nli=base,number_match,llm_norag:qwen2.5:7b,llm_rag:qwen2.5:7b --run second_test_rerun
+cd .. && rm -rf data/eval/llm_cache && mv data/eval/llm_cache.bak data/eval/llm_cache
 ```
 
 | System | Accuracy [95% CI] | Macro-F1 [95% CI] | Supported F1 | Contradicted F1 | Unverifiable F1 | McNemar p vs VERIFIN |
