@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react"
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
 import Layout from "./components/layout/Layout"
 import LandingPage from "./pages/LandingPage"
+import { PageErrorBoundary } from "./components/shared/PageErrorBoundary"
 import { AuthProvider, RequireAuth, RequireRole } from "./lib/AuthContext"
 
 // Every page except the landing page loads on demand, so the first visit downloads only what it shows.
@@ -35,6 +36,7 @@ function App() {
   return (
     <Router basename={(import.meta as any).env?.BASE_URL ?? "/"}>
       <AuthProvider>
+      <PageErrorBoundary>
       <Suspense fallback={<PageLoading />}>
       <Routes>
         <Route path="/" element={<LandingPage />} />
@@ -61,6 +63,7 @@ function App() {
         </Route>
       </Routes>
       </Suspense>
+      </PageErrorBoundary>
       </AuthProvider>
     </Router>
   )

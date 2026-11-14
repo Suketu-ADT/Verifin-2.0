@@ -59,6 +59,24 @@ def test_text_files_are_gzipped_when_the_browser_accepts_it(tmp_path, monkeypatc
     assert "content-encoding" not in plain.headers and plain.text == "console.log('x');" * 500
 
 
+def test_gzip_is_only_used_when_the_browser_really_accepts_it(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    (tmp_path / "dist" / "assets" / "big.js").write_text("console.log('x');" * 500)
+
+    def encoding(header):
+        return client.get("/assets/big.js", headers={"Accept-Encoding": header}).headers.get("content-encoding")
+
+    assert encoding("gzip;q=0, identity") is None  # explicitly refused
+    assert encoding("gzip; q=0.0") is None
+    assert encoding("identity") is None
+    assert encoding("*;q=0") is None
+    assert encoding("gzip;q=oops") is None
+    assert encoding("gzip, deflate, br") == "gzip"
+    assert encoding("deflate, gzip;q=0.5") == "gzip"
+    assert encoding("*") == "gzip"
+    assert encoding("GZIP") == "gzip"
+
+
 def test_robots_txt_is_a_real_file_not_the_shell(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     (tmp_path / "dist" / "robots.txt").write_text("User-agent: *\nAllow: /\n")

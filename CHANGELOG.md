@@ -8,6 +8,7 @@ Fixes from a Lighthouse run (mobile, simulated slow connection) of the landing p
 
 - Every page except the landing page is loaded on demand (`React.lazy`). The entry script went from about 1.56 MB to 384 KB (121 KB compressed); heavy pages (charts, PDF viewer) load only when opened.
 - The API now compresses the built interface's text files with gzip when the browser accepts it and sends `Cache-Control: public, max-age=31536000, immutable` for the hashed files under `assets/` and `no-cache` for the shell, so repeat visits download nothing.
+- If a page's file cannot be loaded (for example a tab left open across a new deployment), the app shows "This page could not be loaded" with a reload button instead of a blank screen, and other pages stay reachable. gzip is only used when the browser's `Accept-Encoding` really allows it (`gzip;q=0` is honoured).
 - The landing page has a `<main>` landmark.
 - New `frontend/public/robots.txt`; before, `/robots.txt` returned the app's HTML page.
 - Not changed: signed-out visitors still see one 401 in the browser console, from the sign-in check (`/api/v1/auth/me`); the call is needed so that local mode without authentication opens straight into the app. Source maps for the production bundle are not published.

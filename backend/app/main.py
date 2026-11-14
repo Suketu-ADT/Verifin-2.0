@@ -172,10 +172,32 @@ _CACHE_FOREVER = "public, max-age=31536000, immutable"  # Vite puts a content ha
 _REVALIDATE = "no-cache"  # the shell and other unhashed files: cheap conditional request every time, never stale
 
 
+def _accepts_gzip(header: str) -> bool:
+    """True when an Accept-Encoding header allows gzip: named with a quality above zero, or covered by a wildcard that is not refused."""
+    quality: dict[str, float] = {}
+    for part in header.lower().split(","):
+        token, _, params = part.strip().partition(";")
+        token = token.strip()
+        if not token:
+            continue
+        q = 1.0
+        for param in params.split(";"):
+            name, _, value = param.strip().partition("=")
+            if name.strip() == "q":
+                try:
+                    q = float(value)
+                except ValueError:
+                    q = 0.0  # a malformed weight is not an invitation
+        quality[token] = q
+    if "gzip" in quality:
+        return quality["gzip"] > 0
+    return quality.get("*", 0.0) > 0
+
+
 def _static_file(file: Path, request: Request, hashed: bool) -> Response:
     """Serve a built interface file with the headers a browser needs: long-lived cache for hashed assets, gzip for text."""
     cache_control = _CACHE_FOREVER if hashed else _REVALIDATE
-    if file.suffix.lower() in _COMPRESSIBLE and "gzip" in request.headers.get("accept-encoding", "").lower():
+    if file.suffix.lower() in _COMPRESSIBLE and _accepts_gzip(request.headers.get("accept-encoding", "")):
         stat = file.stat()
         key = (str(file), stat.st_mtime_ns, stat.st_size)
         body = _gzip_cache.get(key)
