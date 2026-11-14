@@ -40,6 +40,31 @@ def test_paths_cannot_escape_the_folder(tmp_path, monkeypatch):
     assert client.get("/../secret.txt").text == "<html>shell</html>"
 
 
+def test_hashed_assets_are_cached_for_good_and_the_shell_is_always_revalidated(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    assert client.get("/assets/app.js").headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    assert client.get("/verify/results/abc").headers["cache-control"] == "no-cache"
+
+
+def test_text_files_are_gzipped_when_the_browser_accepts_it(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    (tmp_path / "dist" / "assets" / "big.js").write_text("console.log('x');" * 500)
+    gz = client.get("/assets/big.js", headers={"Accept-Encoding": "gzip"})
+    assert gz.headers["content-encoding"] == "gzip" and "Accept-Encoding" in gz.headers["vary"]  # CORS may add Origin
+    assert gz.headers["content-type"].startswith(("text/javascript", "application/javascript"))
+    assert gz.text == "console.log('x');" * 500  # the client decompresses it transparently
+    assert int(gz.headers["content-length"]) < 8500
+    plain = client.get("/assets/big.js", headers={"Accept-Encoding": "identity"})
+    assert "content-encoding" not in plain.headers and plain.text == "console.log('x');" * 500
+
+
+def test_robots_txt_is_a_real_file_not_the_shell(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    (tmp_path / "dist" / "robots.txt").write_text("User-agent: *\nAllow: /\n")
+    assert client.get("/robots.txt").text.startswith("User-agent")
+
+
 def test_nothing_is_served_when_the_setting_is_off(monkeypatch):
     monkeypatch.setattr(settings, "frontend_dist", None)
     assert TestClient(create_app()).get("/").status_code == 404

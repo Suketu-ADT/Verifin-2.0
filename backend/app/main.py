@@ -2,6 +2,8 @@
 VERIFIN 2.0 — FastAPI Application Entrypoint.
 """
 
+import gzip
+import mimetypes
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -154,13 +156,37 @@ def _serve_frontend(app: FastAPI) -> None:
         return
 
     @app.get("/{path:path}", include_in_schema=False)
-    async def web_interface(path: str):
+    async def web_interface(path: str, request: Request):
         if path.split("/")[0] == "api":
             return JSONResponse(status_code=404, content={"detail": "Not found"})
         candidate = (dist / path).resolve()
         if path and candidate.is_file() and candidate.is_relative_to(dist):
-            return FileResponse(candidate)
-        return FileResponse(dist / "index.html")
+            return _static_file(candidate, request, hashed=candidate.is_relative_to(dist / "assets"))
+        return _static_file(dist / "index.html", request, hashed=False)
+
+
+# Text formats worth compressing; fonts, images and PDFs are already compact (or must stay byte-exact for range requests).
+_COMPRESSIBLE = {".js", ".mjs", ".css", ".html", ".svg", ".json", ".txt", ".xml"}
+_gzip_cache: dict[tuple[str, int, int], bytes] = {}
+_CACHE_FOREVER = "public, max-age=31536000, immutable"  # Vite puts a content hash in the file name of everything under assets/
+_REVALIDATE = "no-cache"  # the shell and other unhashed files: cheap conditional request every time, never stale
+
+
+def _static_file(file: Path, request: Request, hashed: bool) -> Response:
+    """Serve a built interface file with the headers a browser needs: long-lived cache for hashed assets, gzip for text."""
+    cache_control = _CACHE_FOREVER if hashed else _REVALIDATE
+    if file.suffix.lower() in _COMPRESSIBLE and "gzip" in request.headers.get("accept-encoding", "").lower():
+        stat = file.stat()
+        key = (str(file), stat.st_mtime_ns, stat.st_size)
+        body = _gzip_cache.get(key)
+        if body is None:
+            body = gzip.compress(file.read_bytes(), compresslevel=6, mtime=0)
+            if len(_gzip_cache) > 256:  # a rebuilt interface leaves old entries behind; start over rather than grow
+                _gzip_cache.clear()
+            _gzip_cache[key] = body
+        media_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
+        return Response(body, media_type=media_type, headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding", "Cache-Control": cache_control})
+    return FileResponse(file, headers={"Cache-Control": cache_control, "Vary": "Accept-Encoding"})
 
 
 app = create_app()
