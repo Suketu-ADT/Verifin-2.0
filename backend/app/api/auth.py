@@ -31,7 +31,7 @@ from app.services.email_templates import password_reset_email, sign_in_code_emai
 from app.services.mailer import send_email, smtp_configured
 from app.services.signin import GoogleTokenError, code_matches, hash_code, new_code, verify_google_credential
 from app.security.passwords import DUMMY_HASH, hash_password, verify_password
-from app.security.principal import ANONYMOUS, ROLE_RANK, Principal, get_principal, hash_api_key, require_role
+from app.security.principal import ANONYMOUS, ROLE_RANK, Principal, get_optional_principal, get_principal, hash_api_key, require_role
 from app.security.rate_limit import SlidingWindowLimiter
 from app.security.tokens import create_access_token
 from app.utils.logging import logger
@@ -502,6 +502,26 @@ async def me(principal: Principal = Depends(get_principal)) -> UserResponse:
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
     return UserResponse.of(user)
+
+
+class SessionResponse(BaseModel):
+    user: Optional[UserResponse] = None
+    auth_enabled: bool
+
+
+@router.get("/session", response_model=SessionResponse)
+async def session(principal: Optional[Principal] = Depends(get_optional_principal)) -> SessionResponse:
+    """Who is signed in, for the web app's first request. Unlike ``/me`` it answers 200 with ``user: null`` when nobody is signed in
+    (or the token is expired or revoked), so a signed-out visitor does not trigger a 401. With authentication off it returns the
+    anonymous local user, exactly like ``/me``."""
+    if principal is None:
+        return SessionResponse(user=None, auth_enabled=settings.auth_enabled)
+    try:
+        return SessionResponse(user=await me(principal), auth_enabled=settings.auth_enabled)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_404_NOT_FOUND:  # a valid token for an account that has since been deleted
+            return SessionResponse(user=None, auth_enabled=settings.auth_enabled)
+        raise
 
 
 @router.get("/users", response_model=List[UserResponse])

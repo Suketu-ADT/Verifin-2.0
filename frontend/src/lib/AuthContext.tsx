@@ -30,7 +30,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     fetchCurrentUser()
-      .then((u) => !cancelled && setUser(u))
+      .then((u) => {
+        if (!u) clearToken() // nobody is signed in: a leftover token is expired or revoked
+        if (!cancelled) setUser(u)
+      })
       .catch(() => !cancelled && setUser(null))
       .finally(() => !cancelled && setLoading(false))
     return () => {

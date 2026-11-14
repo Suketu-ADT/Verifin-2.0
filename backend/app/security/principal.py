@@ -110,6 +110,28 @@ async def get_principal(
     return principal
 
 
+async def get_optional_principal(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+) -> Optional[Principal]:
+    """Who is calling, if anyone, without treating "nobody" as an error.
+
+    Used by the "who am I" check that runs when the web app opens, so a signed-out visitor gets an ordinary 200 instead of a 401
+    in the browser console. No credential at all is not counted as an authentication failure; a credential that is present but bad
+    (expired, revoked, unknown key) is counted as one by the normal checks and also answers None here.
+    """
+    if settings.auth_enabled and not request.headers.get("x-api-key") and not (
+        credentials is not None and credentials.scheme.lower() == "bearer"
+    ):
+        return None
+    try:
+        return await get_principal(request, credentials)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            return None
+        raise
+
+
 def require_role(minimum: str) -> Callable[..., Principal]:
     """Dependency factory: the caller must hold at least ``minimum`` (viewer < analyst < admin)."""
     if minimum not in ROLE_RANK:

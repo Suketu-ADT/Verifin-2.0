@@ -2,6 +2,13 @@
 
 Newest first. Only user-visible changes and changes to how the project is built or documented are listed.
 
+## Unreleased: no 401 in the console for signed-out visitors (2026-11-14)
+
+- New public endpoint `GET /api/v1/auth/session` returns `{"user": ..., "auth_enabled": ...}` and always answers 200: `user` is `null` when nobody is signed in or the token is expired, revoked or belongs to a deleted account. With authentication off it returns the anonymous local user, like `/auth/me`. A visitor with no credentials is not counted as an authentication failure in the metrics.
+- The web app's first "who am I" request now uses it, so opening the site signed out no longer logs a `401 (Unauthorized)` in the browser console. Lighthouse best practices 0.96 to 1.00 (performance 0.95, accessibility 1.00, SEO 1.00). A leftover expired token is cleared and the visitor lands on the sign-in page.
+- `GET /api/v1/auth/me` is unchanged and still answers 401 without a valid token; every other endpoint still requires sign-in.
+- On `/login` the Google sign-in button can still log an error when the page is opened from an address that is not an allowed origin for the configured Google client ID (for example `127.0.0.1`). That comes from Google's script, not from the API.
+
 ## Unreleased: page speed, landmark and robots.txt fixes (2026-11-14)
 
 Fixes from a Lighthouse run (mobile, simulated slow connection) of the landing page served by the API. Measured again with the same tool on the rebuilt app: performance 0.56 to 0.95, accessibility 0.98 to 1.00, SEO 0.91 to 1.00; first contentful paint 10.7 s to 2.3 s, largest contentful paint 11.0 s to 2.4 s. Best practices stays at 0.96.
@@ -11,7 +18,7 @@ Fixes from a Lighthouse run (mobile, simulated slow connection) of the landing p
 - If a page's file cannot be loaded (for example a tab left open across a new deployment), the app shows "This page could not be loaded" with a reload button instead of a blank screen, and other pages stay reachable. gzip is only used when the browser's `Accept-Encoding` really allows it (`gzip;q=0` is honoured).
 - The landing page has a `<main>` landmark.
 - New `frontend/public/robots.txt`; before, `/robots.txt` returned the app's HTML page.
-- Not changed: signed-out visitors still see one 401 in the browser console, from the sign-in check (`/api/v1/auth/me`); the call is needed so that local mode without authentication opens straight into the app. Source maps for the production bundle are not published.
+- Source maps for the production bundle are not published (Lighthouse's "missing source maps" note remains). The signed-out 401 that was listed here as not changed is fixed in the entry above.
 
 ## Unreleased: interface redesign and motion polish (2026-11-13)
 

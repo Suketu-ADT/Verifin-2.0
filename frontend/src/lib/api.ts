@@ -23,7 +23,7 @@ api.interceptors.request.use((config) => {
 
 // An expired or revoked session sends the user back to the login page. The calls that are *meant* to
 // answer 401 (login, registration, the initial "who am I") handle it themselves.
-const SELF_HANDLED_401 = ['/auth/login', '/auth/register', '/auth/me'];
+const SELF_HANDLED_401 = ['/auth/login', '/auth/register', '/auth/me', '/auth/session'];
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -536,8 +536,13 @@ export async function googleLoginRequest(credential: string): Promise<TokenRespo
   return (await api.post<TokenResponse>('/api/v1/auth/google', { credential })).data;
 }
 
-export async function fetchCurrentUser(): Promise<AuthUser> {
-  return (await api.get<AuthUser>('/api/v1/auth/me')).data;
+/**
+ * Who is signed in, or null. Uses `/auth/session`, which answers 200 with `user: null` for a signed-out visitor (or an expired
+ * token), so opening the app while signed out does not put a 401 in the browser console. With authentication off it returns the
+ * anonymous local user.
+ */
+export async function fetchCurrentUser(): Promise<AuthUser | null> {
+  return (await api.get<{ user: AuthUser | null; auth_enabled: boolean }>('/api/v1/auth/session')).data.user;
 }
 
 /** The raw PDF as bytes, fetched with the user's credentials (a plain URL cannot carry them). */
