@@ -58,3 +58,11 @@ async def test_with_authentication_off_the_anonymous_user_is_returned(client, mo
 async def test_other_endpoints_still_require_sign_in(client):
     assert (await client.get(f"{V1}/auth/users")).status_code == 401
     assert (await client.get(f"{V1}/documents")).status_code in (401, 403)
+
+
+async def test_who_am_i_responses_are_never_cached(client):
+    await make_user()
+    headers = bearer(await login(client))
+    for path in ("session", "me"):
+        assert (await client.get(f"{V1}/auth/{path}", headers=headers)).headers["cache-control"] == "no-store"
+    assert (await client.get(f"{V1}/auth/session")).headers["cache-control"] == "no-store"  # signed-out answer too

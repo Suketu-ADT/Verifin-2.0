@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
@@ -492,7 +492,12 @@ async def update_profile(body: UpdateProfileRequest, principal: Principal = Depe
     return UserResponse.of(await UserRepository().get_user_by_id(user.id))
 
 
-@router.get("/me", response_model=UserResponse)
+async def _no_store(response: Response) -> None:
+    """Responses about who is signed in are for that browser only; no cache, shared or private, may keep them."""
+    response.headers["Cache-Control"] = "no-store"
+
+
+@router.get("/me", response_model=UserResponse, dependencies=[Depends(_no_store)])
 async def me(principal: Principal = Depends(get_principal)) -> UserResponse:
     if principal.auth_method == "none":
         return UserResponse(id=principal.user_id, email="anonymous@local", name="Anonymous (auth disabled)",
@@ -509,7 +514,7 @@ class SessionResponse(BaseModel):
     auth_enabled: bool
 
 
-@router.get("/session", response_model=SessionResponse)
+@router.get("/session", response_model=SessionResponse, dependencies=[Depends(_no_store)])
 async def session(principal: Optional[Principal] = Depends(get_optional_principal)) -> SessionResponse:
     """Who is signed in, for the web app's first request. Unlike ``/me`` it answers 200 with ``user: null`` when nobody is signed in
     (or the token is expired or revoked), so a signed-out visitor does not trigger a 401. With authentication off it returns the

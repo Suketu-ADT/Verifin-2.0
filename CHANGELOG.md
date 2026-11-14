@@ -6,7 +6,7 @@ Newest first. Only user-visible changes and changes to how the project is built 
 
 - New public endpoint `GET /api/v1/auth/session` returns `{"user": ..., "auth_enabled": ...}` and always answers 200: `user` is `null` when nobody is signed in or the token is expired, revoked or belongs to a deleted account. With authentication off it returns the anonymous local user, like `/auth/me`. A visitor with no credentials is not counted as an authentication failure in the metrics.
 - The web app's first "who am I" request now uses it, so opening the site signed out no longer logs a `401 (Unauthorized)` in the browser console. Lighthouse best practices 0.96 to 1.00 (performance 0.95, accessibility 1.00, SEO 1.00). A leftover expired token is cleared and the visitor lands on the sign-in page.
-- `GET /api/v1/auth/me` is unchanged and still answers 401 without a valid token; every other endpoint still requires sign-in.
+- `GET /api/v1/auth/me` still answers 401 without a valid token and every other endpoint still requires sign-in. Both `/auth/session` and `/auth/me` now send `Cache-Control: no-store` on their normal answers, so no browser or shared proxy keeps a response about who is signed in.
 - On `/login` the Google sign-in button can still log an error when the page is opened from an address that is not an allowed origin for the configured Google client ID (for example `127.0.0.1`). That comes from Google's script, not from the API.
 
 ## Unreleased: page speed, landmark and robots.txt fixes (2026-11-14)
